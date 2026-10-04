@@ -6,4 +6,4 @@ playwright-report/
 test-results/
 *.tsbuildinfo
 .static-build/
-netlify-upload/
+
