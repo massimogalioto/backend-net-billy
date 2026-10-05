@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel, Field
-from database_service import ConfigurationError, insert_offer
+from database_service import ConfigurationError, find_duplicate_cte_offer, insert_offer
+from fastapi.responses import JSONResponse
 from storage_service import delete_pdf, upload_cte_pdf
 import logging
 import base64
@@ -23,6 +24,7 @@ class OffertaInput(BaseModel):
     spread: float | None = None
     costo_fisso: float | None = None
     validita: str | None = None
+    valid_until: str | None = None
     fonte_cte: str | None = None
     vincoli: str | None = None
     tipo_fornitura: str
@@ -38,6 +40,17 @@ def salva(offerta: OffertaInput, x_api_key: str = Header(None)):
     dati = offerta.dict(exclude={"cte_pdf", "cte_retry_token"})
     if offerta.cte_retry_token:
         raise HTTPException(status_code=422, detail="Retry CTE non supportato: ripeti il salvataggio del PDF originale")
+    try:
+        existing_offer_id = find_duplicate_cte_offer(dati)
+    except ConfigurationError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except Exception as error:
+        logger.exception("[CTE] PostgreSQL controllo duplicati fallito")
+        raise HTTPException(status_code=500, detail="Controllo duplicati CTE fallito") from error
+    if existing_offer_id:
+        return JSONResponse(status_code=409, content={
+            "detail": "CTE già presente", "existing_offer_id": existing_offer_id,
+        })
     pdf_metadata = None
     if offerta.cte_pdf:
         filename = offerta.cte_pdf.filename

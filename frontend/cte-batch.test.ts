@@ -29,6 +29,14 @@ async function exercise(names: string[], brokenPdf = "", brokenSave = "") {
 }
 
 describe("coda CTE", () => {
+  it("mostra un messaggio specifico per una CTE duplicata", async () => {
+    const items = selectPdfs([new File(["pdf"], "duplicate.pdf")]);
+    items[0].output_ai = offer;
+    vi.stubGlobal("fetch", vi.fn(async () => response({ detail: "CTE già presente", existing_offer_id: "existing" }, 409)));
+    await runBatch(items, "/api/service", (id, patch) => Object.assign(items[id], patch));
+    expect(items[0].success).toBe(false);
+    expect(items[0].error).toBe("Questa CTE risulta già presente nel tuo archivio.");
+  });
   it("non salva risposte AI con errore e continua con gli altri PDF", async () => {
     const items = selectPdfs(["bad.pdf", "ok.pdf"].map(name => new File(["pdf"], name)));
     const fetchMock = vi.fn(async (url: string, init: RequestInit) => {

@@ -70,6 +70,33 @@ def get_offerte(tipo_fornitura: str, tipologia_cliente: str) -> list[dict[str, A
         return [{"id": str(row["id"]), "fields": _offer_fields(row)} for row in cur.fetchall()]
 
 
+def find_duplicate_cte_offer(dati: dict[str, Any]) -> str | None:
+    # TODO: enforce duplicate protection at database level after the
+    # duplicate fingerprint has been validated in production.
+    tenant_id = default_tenant_id()
+    with _connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """SELECT id FROM cte_offers
+               WHERE tenant_id = %s
+                 AND TRIM(supplier) IS NOT DISTINCT FROM %s
+                 AND TRIM(customer_type) IS NOT DISTINCT FROM %s
+                 AND TRIM(supply_type) IS NOT DISTINCT FROM %s
+                 AND TRIM(tariff_type) IS NOT DISTINCT FROM %s
+                 AND valid_until IS NOT DISTINCT FROM %s::date
+                 AND fixed_price_kwh IS NOT DISTINCT FROM %s
+                 AND spread_kwh IS NOT DISTINCT FROM %s
+                 AND monthly_fixed_cost IS NOT DISTINCT FROM %s
+               ORDER BY created_at, id LIMIT 1""",
+            (tenant_id, *(value.strip() if isinstance(value, str) else value
+                          for value in (dati.get("fornitore"), dati.get("tipologia_cliente"),
+                                        dati.get("tipo_fornitura"), dati.get("tariffa"))),
+             dati.get("valid_until") or None, dati.get("prezzo_kwh"),
+             dati.get("spread"), dati.get("costo_fisso")),
+        )
+        row = cur.fetchone()
+        return str(row["id"]) if row else None
+
+
 def insert_offer(dati: dict[str, Any], pdf_metadata: dict[str, Any] | None = None) -> str:
     tenant_id = default_tenant_id()
     metadata = pdf_metadata or {}
@@ -78,13 +105,14 @@ def insert_offer(dati: dict[str, Any], pdf_metadata: dict[str, Any] | None = Non
         cur.execute(
             """INSERT INTO cte_offers
                (tenant_id, supplier, offer_name, customer_type, supply_type, tariff_type,
-                fixed_price_kwh, spread_kwh, monthly_fixed_cost, valid_from, source_cte,
+                fixed_price_kwh, spread_kwh, monthly_fixed_cost, valid_from, valid_until, source_cte,
                 notes, pdf_object_key, pdf_filename, pdf_content_type, pdf_size_bytes)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                RETURNING id""",
             (tenant_id, dati.get("fornitore"), dati.get("nome_offerta"),
              dati.get("tipologia_cliente"), dati.get("tipo_fornitura"), dati.get("tariffa"),
              dati.get("prezzo_kwh"), dati.get("spread"), dati.get("costo_fisso"), valid_from,
+             dati.get("valid_until") or None,
              dati.get("fonte_cte"), dati.get("vincoli"), metadata.get("object_key"),
              metadata.get("filename"), metadata.get("content_type"), metadata.get("size_bytes")),
         )

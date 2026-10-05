@@ -21,6 +21,7 @@ async function request(url: string, init: RequestInit) {
     const response = await fetch(...connectionRequest(url, { ...init, signal: controller.signal }));
     let data;
     try { data = await response.json(); } catch { throw new Error(`Risposta del servizio non leggibile (HTTP ${response.status})`); }
+    if (response.status === 409 && data.detail === "CTE già presente") throw new Error("Questa CTE risulta già presente nel tuo archivio.");
     if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : `Errore HTTP ${response.status}: ${JSON.stringify(data.detail)}`);
     return data;
   } catch (error) {

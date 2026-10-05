@@ -51,11 +51,7 @@ async def upload_cte_pdf(file: UploadFile = File(...), x_api_key: str = Header(N
 
 # 🧾 Estrazione + confronto da bolletta PDF
 @router.post("/upload-bolletta")
-async def upload_bolletta(file: UploadFile = File(...), x_api_key: str = Header(None)):
-    secret_key = os.getenv("API_SECRET_KEY")
-    if secret_key and x_api_key != secret_key:
-        raise HTTPException(status_code=401, detail="Chiave API non valida")
-
+async def upload_bolletta(file: UploadFile = File(...)):
     try:
         with NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
             file.file.seek(0)

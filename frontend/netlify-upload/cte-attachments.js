@@ -30,6 +30,7 @@ export async function saveCte(file, offer, url, connectionRequest) {
     try { result = await response.json(); }
     catch { throw new Error(`Risposta del servizio non leggibile (HTTP ${response.status})`); }
     if (!response.ok) {
+      if (response.status === 409 && result.detail === "CTE già presente") throw new Error("Questa CTE risulta già presente nel tuo archivio.");
       const detail = result.detail;
       if (detail?.fase === "attachment" && detail.record_id && detail.cte_retry_token) {
         retries.set(file, { signature, recordId: detail.record_id, token: detail.cte_retry_token });
