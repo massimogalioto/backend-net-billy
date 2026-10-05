@@ -36,10 +36,8 @@ app.include_router(analizza_bolletta_router)
 app.include_router(estrai_testo_pdf_router)
 
 @app.get("/cte-offers/{offer_id}/pdf")
-def cte_pdf(offer_id: str, x_api_key: str = Header(None)):
-    secret_key = os.getenv("API_SECRET_KEY")
-    if secret_key and x_api_key != secret_key:
-        raise HTTPException(status_code=401, detail="Chiave API non valida")
+def cte_pdf(offer_id: str):
+    # TEMPORARY TEST MODE - authentication will replace DEFAULT_TENANT_ID
     try:
         offer = get_offer_pdf(offer_id)
         if not offer or not offer["pdf_object_key"]:
