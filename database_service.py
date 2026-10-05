@@ -4,6 +4,7 @@ This module deliberately exposes the same Airtable-shaped records consumed by
 the comparison algorithm, keeping calculation code independent of persistence.
 """
 import os
+from decimal import Decimal
 from datetime import date
 from typing import Any
 
@@ -30,6 +31,11 @@ def _connection():
     return psycopg.connect(database_url, row_factory=dict_row)
 
 
+def _normalize_numeric(value: Any) -> Any:
+    """Keep the legacy comparison contract: database NUMERIC becomes float."""
+    return float(value) if isinstance(value, Decimal) else value
+
+
 def _offer_fields(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "id_offerta": str(row["id"]),
@@ -38,9 +44,9 @@ def _offer_fields(row: dict[str, Any]) -> dict[str, Any]:
         "Tipologia cliente": row["customer_type"],
         "Tipo fornitura": row["supply_type"],
         "Tipo tariffa": row["tariff_type"],
-        "Prezzo fisso €/kWh": row["fixed_price_kwh"],
-        "Spread €/kWh": row["spread_kwh"],
-        "Costo fisso mensile": row["monthly_fixed_cost"] or 0,
+        "Prezzo fisso €/kWh": _normalize_numeric(row["fixed_price_kwh"]),
+        "Spread €/kWh": _normalize_numeric(row["spread_kwh"]),
+        "Costo fisso mensile": _normalize_numeric(row["monthly_fixed_cost"]) or 0,
         "Data validità": row["valid_from"],
         "Fonte CTE": row["source_cte"],
         "Note": row["notes"],
