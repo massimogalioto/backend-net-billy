@@ -5,15 +5,15 @@ from datetime import datetime
 def confronta_offerte(bolletta):
     kwh_totali = bolletta["kwh_totali"]
     mesi_bolletta = bolletta["mesi_bolletta"]
-    spesa_materia_energia = bolletta["spesa_materia_energia"]
-    quota_fissa = bolletta["quota_fissa_vendita"] #modifica 05-09-2025
+    spesa_vendita_energia = bolletta["spesa_vendita_energia"]
+    quota_fissa = bolletta["quota_fissa_vendita"]  # Commercial fixed cost in EUR/month.
     tipo_fornitura = bolletta["tipo_fornitura"]
     tipologia_cliente = bolletta["tipologia_cliente"]
     data = bolletta["data_riferimento"]
    
     
     kwh_mensili = kwh_totali / mesi_bolletta
-    spesa_mensile = (spesa_materia_energia / mesi_bolletta) + (quota_fissa/mesi_bolletta) #modifica 06-09-2025
+    spesa_mensile = (spesa_vendita_energia / mesi_bolletta) + quota_fissa
     prezzo_effettivo = spesa_mensile / kwh_mensili
 
     offerte = get_offerte(tipo_fornitura, tipologia_cliente)
@@ -40,7 +40,10 @@ def confronta_offerte(bolletta):
         else:
             continue
 
-        costo_stimato = round(((prezzo_kwh + disp) * kwh_mensili) + costo_fisso, 2)
+        if tipo_tariffa == "Fisso":
+            costo_stimato = prezzo_kwh * 1.10 * kwh_mensili + costo_fisso
+        else:
+            costo_stimato = (prezzo_kwh + disp) * kwh_mensili + costo_fisso
         delta = costo_stimato - spesa_mensile
 
         if delta < 0:
@@ -48,7 +51,7 @@ def confronta_offerte(bolletta):
             percentuale = abs(delta) / spesa_mensile * 100
         else:
             tipo_diff = "Spesa in più"
-            percentuale = delta / spesa_mensile * 100
+            percentuale = delta / spesa_mensile * 100 if spesa_mensile else 0
 
         confronti.append({
             "id": id_offerta,
@@ -57,7 +60,8 @@ def confronta_offerte(bolletta):
             "tariffa": tipo_tariffa,
             "prezzo_kwh": round(prezzo_kwh, 4),
             "costo_fisso": costo_fisso,
-            "totale_simulato": costo_stimato,
+            "totale_simulato": round(costo_stimato, 2),
+            "risparmio_annuo": round(-delta * 12, 2),
             "prezzo_effettivo_pagato": round(prezzo_effettivo, 4),
             "differenza_mensile": round(delta, 2),
             "tipo_differenza": tipo_diff,

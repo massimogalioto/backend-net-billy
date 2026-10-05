@@ -58,6 +58,7 @@ class BollettaInput(BaseModel):
     kwh_totali: float
     mesi_bolletta: int
     spesa_materia_energia: float
+    spesa_vendita_energia: float
     quota_fissa_vendita: float #modifica 05-09-2025
     tipo_fornitura: str  # "Luce" o "Gas"
     tipologia_cliente: str  # "Residenziale" o "Business"

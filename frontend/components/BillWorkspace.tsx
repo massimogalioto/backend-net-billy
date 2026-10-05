@@ -1,6 +1,6 @@
 "use client";
 import { useRef, useState } from "react";
-import { ArrowRight, ArrowDownRight, CheckCircle2, Download, FileText, LoaderCircle, ScanLine, Zap } from "lucide-react";
+import { ArrowRight, ArrowDownRight, ArrowUpRight, CheckCircle2, Download, FileText, LoaderCircle, ScanLine, Zap } from "lucide-react";
 import UploadZone from "./UploadZone";
 import { service, errorMessage, euro, number } from "@/lib/api";
 import { readConnection } from "@/lib/connection";
@@ -20,9 +20,9 @@ export default function BillWorkspace() {
       const form = new FormData(); form.append("file", file);
       const data = await service<BillResult>("upload-bolletta", form);
       if (!data.bolletta || !Array.isArray(data.offerte)) throw new Error("La risposta non contiene una bolletta e un elenco di offerte validi.");
-      const required = [data.bolletta.kwh_totali, data.bolletta.mesi_bolletta, data.bolletta.spesa_materia_energia, data.bolletta.quota_fissa_vendita];
+      const required = [data.bolletta.kwh_totali, data.bolletta.mesi_bolletta, data.bolletta.spesa_vendita_energia, data.bolletta.quota_fissa_vendita];
       if (required.some(value => typeof value !== "number" || !Number.isFinite(value)) || data.bolletta.mesi_bolletta <= 0) throw new Error("I consumi o i costi restituiti dal servizio non sono validi.");
-      if (data.offerte.some(offer => [offer.totale_simulato, offer.differenza_mensile, offer.percentuale, offer.prezzo_kwh, offer.costo_fisso].some(value => typeof value !== "number" || !Number.isFinite(value)))) throw new Error("Il servizio ha restituito importi non validi per alcune offerte.");
+      if (data.offerte.some(offer => [offer.totale_simulato, offer.differenza_mensile, offer.risparmio_annuo, offer.percentuale, offer.prezzo_kwh, offer.costo_fisso].some(value => typeof value !== "number" || !Number.isFinite(value)))) throw new Error("Il servizio ha restituito importi non validi per alcune offerte.");
       setResult({ ...data, offerte: [...data.offerte].sort((a, b) => a.totale_simulato - b.totale_simulato) });
       setTimeout(() => { resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); resultsRef.current?.focus({ preventScroll: true }); }, 100);
     } catch (err) { setError(errorMessage(err)); }
@@ -44,8 +44,8 @@ export default function BillWorkspace() {
   }
   const bill = result?.bolletta;
   const unit = bill?.tipo_fornitura.toLowerCase() === "gas" ? "Smc" : "kWh";
-  // Same formula as confronto.py, including quota_fissa_vendita divided by months.
-  const monthly = bill ? (bill.spesa_materia_energia + bill.quota_fissa_vendita) / bill.mesi_bolletta : 0;
+  // quota_fissa_vendita is already expressed in EUR/month by extraction.
+  const monthly = bill ? bill.spesa_vendita_energia / bill.mesi_bolletta + bill.quota_fissa_vendita : 0;
 
   return <>
     <div className="work-grid bill-upload-grid"><section className="panel upload-panel"><span className="panel-number">IL TUO PUNTO DI PARTENZA</span><h2>Carica la bolletta</h2><p className="muted">Un PDF è tutto ciò che serve per iniziare il confronto.</p>
@@ -58,16 +58,17 @@ export default function BillWorkspace() {
     {result && bill && <div ref={resultsRef} tabIndex={-1} className="bill-results">
       <div className="result-heading"><div><div className="eyebrow"><span /> ANALISI COMPLETATA</div><h2>I tuoi dati. <em>Le tue possibilità.</em></h2></div><button className="button outline" onClick={download}><Download size={16} /> Scarica risultati JSON</button></div>
       <section className="panel bill-summary"><div className="summary-top"><div><span className="tiny-label">RIEPILOGO BOLLETTA</span><h3>{bill.cliente || "La tua fornitura"}</h3><p className="muted">{bill.indirizzo || "Indirizzo non disponibile"}</p></div><span className="badge">{bill.tipo_fornitura} · {bill.tipologia_cliente}</span></div>
-        <div className="stat-grid"><div><span>Consumi del periodo</span><strong>{number(bill.kwh_totali)} <small>{unit}</small></strong></div><div><span>Periodo di fatturazione</span><strong>{number(bill.mesi_bolletta)} <small>mesi</small></strong></div><div><span>Spesa materia energia</span><strong>{euro(bill.spesa_materia_energia)}</strong></div><div><span>Spesa mensile confrontata</span><strong className="amber-text">{euro(monthly)}</strong></div></div>
-        <div className="summary-foot"><span>POD / PDR: {bill.pod || "Non rilevato"}</span><span>Quota fissa rilevata: {euro(bill.quota_fissa_vendita)}</span></div>
+        <div className="stat-grid"><div><span>Consumi del periodo</span><strong>{number(bill.kwh_totali)} <small>{unit}</small></strong></div><div><span>Periodo di fatturazione</span><strong>{number(bill.mesi_bolletta)} <small>mesi</small></strong></div><div><span>Spesa vendita energia</span><strong>{euro(bill.spesa_vendita_energia)}</strong></div><div><span>Spesa mensile confrontata</span><strong className="amber-text">{euro(monthly)}</strong></div></div>
+        <div className="summary-foot"><span>POD / PDR: {bill.pod || "Non rilevato"}</span><span>Quota fissa commerciale: {euro(bill.quota_fissa_vendita)}/mese</span></div>
       </section>
       <div className="offers-title"><h3>Offerte a confronto <span>{result.offerte.length}</span></h3><p>Ordinate per costo mensile stimato, dal più basso.</p></div>
       {!result.offerte.length ? <div className="panel empty-state"><FileText size={36} /><h3>Nessuna offerta disponibile</h3><p>Non sono state trovate offerte per questa fornitura e tipologia di cliente. Verifica le offerte archiviate e la loro validità.</p></div> : <div className="offers-grid">{result.offerte.map((offer, index) => {
-        const saving = offer.differenza_mensile < 0;
+        const saving = offer.risparmio_annuo > 0;
+        const extraCost = offer.risparmio_annuo < 0;
         return <article className={`offer-card ${index === 0 ? "featured" : ""}`} key={`${offer.id ?? offer.nome_offerta}-${index}`}>
           <div className="offer-top"><span className="tool-icon amber"><Zap size={21} /></span><span className="badge">{index === 0 ? "COSTO PIÙ BASSO" : offer.tariffa}</span></div>
-          <span className="supplier">{offer.fornitore}</span><h4>{offer.nome_offerta}</h4><span className="tiny-label">STIMA MENSILE COMPONENTE ENERGIA</span><div className="offer-price">{euro(offer.totale_simulato)}<small>/ mese</small></div>
-          <div className={`saving-row ${saving ? "positive" : "negative"}`}><ArrowDownRight size={18} /><span>{saving ? "Risparmio" : offer.differenza_mensile === 0 ? "Nessuna differenza" : "Spesa in più"}{offer.differenza_mensile !== 0 && <> di <strong>{euro(Math.abs(offer.differenza_mensile))}/mese</strong></>}</span></div>
+          <span className="supplier">{offer.fornitore}</span><h4>{offer.nome_offerta}</h4><span className="tiny-label">{extraCost ? "MAGGIOR COSTO ANNUO STIMATO" : "RISPARMIO ANNUO STIMATO"}</span><div className={`offer-price ${saving ? "positive" : extraCost ? "negative" : ""}`}>{extraCost ? "+ " : ""}{euro(Math.abs(offer.risparmio_annuo))}<small>/anno</small></div>
+          <div className={`saving-row ${saving ? "positive" : extraCost ? "negative" : ""}`}>{extraCost ? <ArrowUpRight size={18} /> : <ArrowDownRight size={18} />}<span>{saving ? "Risparmio mensile" : extraCost ? "Maggior costo mensile" : "Nessuna differenza"}{(saving || extraCost) && <> di <strong>{euro(Math.abs(offer.differenza_mensile))}</strong></>}</span></div>
           <dl className="offer-details"><div><dt>Tipo tariffa</dt><dd>{offer.tariffa}</dd></div><div><dt>Prezzo energia</dt><dd>{new Intl.NumberFormat("it-IT", { maximumFractionDigits: 4 }).format(offer.prezzo_kwh)} €/{unit}</dd></div><div><dt>Costo fisso</dt><dd>{euro(offer.costo_fisso)}/mese</dd></div><div><dt>Differenza percentuale</dt><dd>{saving ? "−" : offer.differenza_mensile > 0 ? "+" : ""}{number(Math.abs(offer.percentuale))}%</dd></div></dl>
           {offer.cte && <button className="button outline full" onClick={() => void openCte(offer.cte!.url)}><FileText size={16} /> Visualizza CTE</button>}
         </article>;

@@ -78,7 +78,7 @@ async def upload_bolletta(file: UploadFile = File(...)):
 
         # ✅ Verifica che tutti i campi necessari siano presenti
         campi_obbligatori = [
-            "kwh_totali", "mesi_bolletta", "spesa_materia_energia",
+            "kwh_totali", "mesi_bolletta", "spesa_vendita_energia", "quota_fissa_vendita",
             "tipo_fornitura", "tipologia_cliente"
         ]
         mancanti = [campo for campo in campi_obbligatori if campo not in dati or dati[campo] is None]
@@ -93,7 +93,7 @@ async def upload_bolletta(file: UploadFile = File(...)):
         confronto_input = {
             "kwh_totali": dati["kwh_totali"],
             "mesi_bolletta": dati["mesi_bolletta"],
-            "spesa_materia_energia": dati["spesa_materia_energia"],
+            "spesa_vendita_energia": dati["spesa_vendita_energia"],
             "quota_fissa_vendita": dati["quota_fissa_vendita"], #modifica 05-09-2025
             "tipo_fornitura": dati["tipo_fornitura"],
             "tipologia_cliente": dati["tipologia_cliente"],
