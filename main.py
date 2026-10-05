@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Header
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from confronto import confronta_offerte
@@ -9,6 +10,8 @@ from salva_offerta_endpoint import router as salva_offerta_router
 from analizza_bolletta import router as analizza_bolletta_router
 from estrai_testo_pdf import router as estrai_testo_pdf_router
 import os
+from database_service import ConfigurationError, get_offer_pdf
+from storage_service import get_pdf
 
 app = FastAPI(
     title="Servizio confronto bollette",
@@ -31,6 +34,26 @@ app.include_router(analizza_router)
 app.include_router(salva_offerta_router)
 app.include_router(analizza_bolletta_router)
 app.include_router(estrai_testo_pdf_router)
+
+@app.get("/cte-offers/{offer_id}/pdf")
+def cte_pdf(offer_id: str, x_api_key: str = Header(None)):
+    secret_key = os.getenv("API_SECRET_KEY")
+    if secret_key and x_api_key != secret_key:
+        raise HTTPException(status_code=401, detail="Chiave API non valida")
+    try:
+        offer = get_offer_pdf(offer_id)
+        if not offer or not offer["pdf_object_key"]:
+            raise HTTPException(status_code=404, detail="PDF CTE non trovato")
+        content = get_pdf(offer["pdf_object_key"])
+        filename = (offer["pdf_filename"] or "cte.pdf").replace('"', "")
+        return Response(content=content, media_type=offer["pdf_content_type"] or "application/pdf",
+                        headers={"Content-Disposition": f'inline; filename="{filename}"'})
+    except HTTPException:
+        raise
+    except ConfigurationError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except Exception as error:
+        raise HTTPException(status_code=502, detail="Recupero PDF dal Bucket fallito") from error
 
 # 📦 Modelli dati
 class BollettaInput(BaseModel):

@@ -49,7 +49,12 @@ export default function CteWorkspace() {
     event.preventDefault(); if (!offerta || lock.current || saved) return;
     lock.current = true; setBusy("save"); setError("");
     try {
-      const result = await service<{ successo: boolean; id: string }>("salva-offerta", offerta);
+      if (!file) throw new Error("PDF CTE originale non disponibile.");
+      const content_base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader(); reader.onerror = () => reject(new Error("Impossibile leggere il PDF CTE."));
+        reader.onload = () => resolve(String(reader.result).split(",", 2)[1] ?? ""); reader.readAsDataURL(file);
+      });
+      const result = await service<{ successo: boolean; id: string }>("salva-offerta", { ...offerta, cte_pdf: { filename: file.name, content_base64 } });
       if (!result.successo || !result.id) throw new Error("Il salvataggio non è stato confermato dal servizio.");
       setSaved(result.id);
     } catch (err) { setError(errorMessage(err)); }
@@ -64,7 +69,7 @@ export default function CteWorkspace() {
       <div className="work-grid"><section className="panel upload-panel"><span className="panel-number">PASSO 01</span><h2>Carica il documento</h2><p className="muted">Seleziona le condizioni tecnico economiche dell’offerta.</p>
         <UploadZone file={file} disabled={!!busy} onChange={chosen => { setFile(chosen); setOfferta(null); setSaved(null); setError(""); }} label="Trascina qui la tua CTE" />
         <button className="button primary full" disabled={!file || !!busy} onClick={() => void extract()}>{busy === "extract" ? <><LoaderCircle className="spin" size={18} /> Analisi in corso…</> : <>Estrai i dati della CTE <ArrowRight size={18} /></>}</button>
-        <div className="panel-note"><Database size={17} /><span>Le offerte vengono salvate nel tuo archivio Airtable dopo la verifica dei dati.</span></div>
+        <div className="panel-note"><Database size={17} /><span>Le offerte vengono salvate nel tuo archivio dopo la verifica dei dati.</span></div>
       </section>
       <section className="panel result-panel"><span className="panel-number">PASSO 02</span><h2>Verifica e salva</h2><p className="muted">Controlla le condizioni estratte prima del salvataggio.</p>
         {!offerta ? <div className="empty-state">{busy === "extract" ? <LoaderCircle size={42} className="spin" /> : <FileCheck2 size={42} />}<h3>{busy === "extract" ? "Stiamo leggendo la tua CTE" : "Qui prenderà forma la tua offerta"}</h3><p>{busy === "extract" ? "L’analisi può richiedere qualche minuto. Mantieni aperta la pagina." : "Carica un PDF per visualizzare fornitore, prezzi e condizioni."}</p><div className="empty-lines"><i /><i /><i /></div></div>
@@ -73,7 +78,7 @@ export default function CteWorkspace() {
               : <input type={field.type ?? "text"} required={field.required} min={field.type === "number" ? "0" : undefined} step={field.type === "number" ? "any" : undefined} value={offerta[field.key] ?? ""} onChange={event => setOfferta({ ...offerta, [field.key]: numeric.has(field.key) ? (event.target.value === "" ? null : Number(event.target.value)) : (event.target.value || null) })} />}
           </label>)}</div></fieldset>
           <p className="form-note">* Campi obbligatori. Inserisci manualmente la fonte della CTE.</p>
-          {saved ? <div className="alert success" role="status"><CheckCircle2 size={19} /><span>Offerta salvata correttamente.<small>Riferimento: {saved}</small></span></div> : <button className="button primary full" disabled={!!busy} type="submit">{busy === "save" ? <><LoaderCircle className="spin" size={18} /> Salvataggio…</> : <><Database size={18} /> Salva offerta in Airtable</>}</button>}
+          {saved ? <div className="alert success" role="status"><CheckCircle2 size={19} /><span>Offerta salvata correttamente.<small>Riferimento: {saved}</small></span></div> : <button className="button primary full" disabled={!!busy} type="submit">{busy === "save" ? <><LoaderCircle className="spin" size={18} /> Salvataggio…</> : <><Database size={18} /> Salva offerta</>}</button>}
         </form>}
       </section></div>
     </div>

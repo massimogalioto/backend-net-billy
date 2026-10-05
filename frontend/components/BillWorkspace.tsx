@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { ArrowRight, ArrowDownRight, CheckCircle2, Download, FileText, LoaderCircle, ScanLine, Zap } from "lucide-react";
 import UploadZone from "./UploadZone";
 import { service, errorMessage, euro, number } from "@/lib/api";
+import { readConnection } from "@/lib/connection";
 import type { BillResult } from "@/lib/types";
 
 export default function BillWorkspace() {
@@ -31,6 +32,16 @@ export default function BillWorkspace() {
     const url = URL.createObjectURL(new Blob([JSON.stringify(result, null, 2)], { type: "application/json" }));
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = "confronto-bolletta.json"; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+  async function openCte(url: string) {
+    try {
+      const connection = readConnection();
+      const target = url.startsWith("http") ? url : `${connection.url.replace(/\/$/, "")}${url}`;
+      const response = await fetch(target, { headers: connection.key ? { "x-api-key": connection.key } : undefined });
+      if (!response.ok) throw new Error("PDF CTE non disponibile.");
+      const objectUrl = URL.createObjectURL(await response.blob());
+      window.open(objectUrl, "_blank", "noopener"); setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (err) { setError(errorMessage(err)); }
+  }
   const bill = result?.bolletta;
   const unit = bill?.tipo_fornitura.toLowerCase() === "gas" ? "Smc" : "kWh";
   // Same formula as confronto.py, including quota_fissa_vendita divided by months.
@@ -58,6 +69,7 @@ export default function BillWorkspace() {
           <span className="supplier">{offer.fornitore}</span><h4>{offer.nome_offerta}</h4><span className="tiny-label">STIMA MENSILE COMPONENTE ENERGIA</span><div className="offer-price">{euro(offer.totale_simulato)}<small>/ mese</small></div>
           <div className={`saving-row ${saving ? "positive" : "negative"}`}><ArrowDownRight size={18} /><span>{saving ? "Risparmio" : offer.differenza_mensile === 0 ? "Nessuna differenza" : "Spesa in più"}{offer.differenza_mensile !== 0 && <> di <strong>{euro(Math.abs(offer.differenza_mensile))}/mese</strong></>}</span></div>
           <dl className="offer-details"><div><dt>Tipo tariffa</dt><dd>{offer.tariffa}</dd></div><div><dt>Prezzo energia</dt><dd>{new Intl.NumberFormat("it-IT", { maximumFractionDigits: 4 }).format(offer.prezzo_kwh)} €/{unit}</dd></div><div><dt>Costo fisso</dt><dd>{euro(offer.costo_fisso)}/mese</dd></div><div><dt>Differenza percentuale</dt><dd>{saving ? "−" : offer.differenza_mensile > 0 ? "+" : ""}{number(Math.abs(offer.percentuale))}%</dd></div></dl>
+          {offer.cte && <button className="button outline full" onClick={() => void openCte(offer.cte!.url)}><FileText size={16} /> Visualizza CTE</button>}
         </article>;
       })}</div>}
       <p className="comparison-note">Le stime usano i consumi e i parametri restituiti dal servizio. Imposte, oneri e trasporto non sono inclusi. Per tariffe variabili, il prezzo dipende anche dall’indice di mercato.</p>

@@ -34,6 +34,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ en
     catch { return NextResponse.json({ detail: `Il servizio ha restituito una risposta non valida (HTTP ${backend.status})` }, { status: 502 }); }
     return NextResponse.json(data, { status: backend.status, headers: { "Cache-Control": "no-store" } });
   } catch {
-    return NextResponse.json({ detail: controller.signal.aborted ? "Tempo massimo superato. Se stavi salvando, verifica Airtable prima di riprovare." : "Servizio non raggiungibile. Riprova tra poco." }, { status: controller.signal.aborted ? 504 : 502 });
+    return NextResponse.json({ detail: controller.signal.aborted ? "Tempo massimo superato. Se stavi salvando, verifica PostgreSQL e Bucket prima di riprovare." : "Servizio non raggiungibile. Riprova tra poco." }, { status: controller.signal.aborted ? 504 : 502 });
   } finally { clearTimeout(timeout); }
 }

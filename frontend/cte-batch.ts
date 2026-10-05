@@ -24,9 +24,17 @@ async function request(url: string, init: RequestInit) {
     if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : `Errore HTTP ${response.status}: ${JSON.stringify(data.detail)}`);
     return data;
   } catch (error) {
-    if (controller.signal.aborted) throw new Error("Timeout: verificare Airtable prima di riprovare un salvataggio.");
+    if (controller.signal.aborted) throw new Error("Timeout: verificare PostgreSQL e Bucket prima di riprovare un salvataggio.");
     throw error;
   } finally { clearTimeout(timer); }
+}
+
+async function pdfPayload(file: File) {
+  const content_base64 = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader(); reader.onerror = () => reject(new Error("Impossibile leggere il PDF CTE."));
+    reader.onload = () => resolve(String(reader.result).split(",", 2)[1] ?? ""); reader.readAsDataURL(file);
+  });
+  return { filename: file.name, content_base64 };
 }
 
 // Only MAX_CONCURRENT workers are started, each handling extraction AND saving.
@@ -49,9 +57,9 @@ export async function runBatch(items: Item[], baseUrl: string, update: (id: numb
         }
         update(item.id, { status: "SALVATAGGIO", output_ai: output });
         const saved = await request(`${baseUrl}/salva-offerta`, {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(output),
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...output, cte_pdf: await pdfPayload(item.file) }),
         });
-        if (!saved.successo || !saved.id) throw new Error("Salvataggio Airtable non confermato");
+        if (!saved.successo || !saved.id) throw new Error("Salvataggio PostgreSQL non confermato");
         update(item.id, { status: "COMPLETATA", success: true, output_ai: output, airtable_id: saved.id, error: null });
       } catch (error) {
         update(item.id, { status: "ERRORE", success: false, output_ai: output, airtable_id: null, error: error instanceof Error ? error.message : "Errore inatteso" });

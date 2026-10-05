@@ -12,5 +12,6 @@ export type Confronto = {
   id?: string; fornitore: string; nome_offerta: string; tariffa: string;
   prezzo_kwh: number; costo_fisso: number; totale_simulato: number;
   prezzo_effettivo_pagato: number; differenza_mensile: number; tipo_differenza: string; percentuale: number;
+  cte?: { filename: string; url: string } | null;
 };
 export type BillResult = { bolletta: Bolletta; offerte: Confronto[] };

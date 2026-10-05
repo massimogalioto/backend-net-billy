@@ -16,7 +16,7 @@ export async function service<T>(endpoint: string, body: FormData | object): Pro
     }
     return data;
   } catch (error) {
-    if (controller.signal.aborted) throw new Error("Tempo massimo superato. Verifica Airtable prima di riprovare un salvataggio.");
+    if (controller.signal.aborted) throw new Error("Tempo massimo superato. Verifica PostgreSQL e Bucket prima di riprovare un salvataggio.");
     throw error;
   } finally { clearTimeout(timer); }
 }

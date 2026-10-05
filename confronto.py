@@ -1,4 +1,5 @@
-from airtable_service import get_offerte, get_prezzo_mercato, estrai_cte_attachment
+from database_service import get_offerte
+from airtable_service import get_prezzo_mercato
 from datetime import datetime
 
 def confronta_offerte(bolletta):
@@ -61,7 +62,9 @@ def confronta_offerte(bolletta):
             "differenza_mensile": round(delta, 2),
             "tipo_differenza": tipo_diff,
             "percentuale": round(percentuale, 2),
-            "cte": estrai_cte_attachment(fields)
+            # The URL is internal to this API; credentials and object keys never reach clients.
+            "cte": ({"filename": fields.get("pdf_filename"), "url": f"https://backend-net-billy-production.up.railway.app/cte-offers/{offerta['id']}/pdf"}
+                    if fields.get("has_pdf") else None)
         })
 
     confronti.sort(key=lambda x: x["totale_simulato"])

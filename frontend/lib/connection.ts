@@ -1,7 +1,8 @@
 export const directConnection = process.env.NEXT_PUBLIC_STATIC_MODE === "true";
 const storageKey = "energia-backend";
+const defaultBackendUrl = "https://backend-net-billy-production.up.railway.app";
 export function readConnection(): { url: string; key: string } {
-  const fallback = { url: process.env.NEXT_PUBLIC_BACKEND_URL ?? "", key: "" };
+  const fallback = { url: process.env.NEXT_PUBLIC_BACKEND_URL ?? defaultBackendUrl, key: "" };
   if (typeof window === "undefined") return fallback;
   try { return { ...fallback, ...JSON.parse(sessionStorage.getItem(storageKey) ?? "{}") }; }
   catch { return fallback; }
