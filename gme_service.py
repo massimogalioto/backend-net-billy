@@ -2,12 +2,16 @@
 import base64
 import io
 import json
+import logging
 import os
 import zipfile
 from datetime import date
 from typing import Any
 
 import requests
+
+
+logger = logging.getLogger(__name__)
 
 
 class GmeError(RuntimeError):
@@ -43,7 +47,8 @@ class GmeMarketClient:
         try:
             response = self.session.post(
                 f"{self.base_url}/api/v1/Auth",
-                json={"Login": self.username, "Password": self.password},
+                headers={"Content-Type": "application/json"},
+                json={"userInfo": {"Login": self.username, "Password": self.password}},
                 timeout=self.timeout,
             )
             response.raise_for_status()
@@ -57,9 +62,13 @@ class GmeMarketClient:
 
         if not isinstance(payload, dict):
             raise GmeError("Risposta di autenticazione GME non valida")
-        token = payload.get("token")
-        if payload.get("Success") is not True or not isinstance(token, str) or not token:
+        success = payload.get("success", payload.get("Success"))
+        token = payload.get("token", payload.get("Token"))
+        reason = payload.get("reason", payload.get("Reason"))
+        if success is not True or not isinstance(token, str) or not token:
+            logger.warning("[GME] authentication failed: %s", reason or "no reason provided")
             raise GmeError("Autenticazione GME fallita")
+        logger.info("[GME] authentication successful")
         return token
 
     def request_pun_hourly(self, target_date: date) -> list[dict[str, Any]]:

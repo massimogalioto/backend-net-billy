@@ -129,21 +129,36 @@ class GmeClientTests(unittest.TestCase):
         response = Mock()
         response.raise_for_status.return_value = None
         response.json.side_effect = [
-            {"Success": True, "token": "not-a-real-token"},
+            {"success": True, "token": "test-token", "reason": None},
             {"FormatType": ".json.zip", "ContentResponse": base64.b64encode(archive.getvalue()).decode()},
         ]
         session = Mock(post=Mock(return_value=response))
         client = GmeMarketClient(username="user", password="password", session=session)
         self.assertEqual(client.request_pun_hourly(TARGET), pun_rows(24))
         self.assertEqual(session.post.call_count, 2)
+        self.assertEqual(
+            session.post.call_args_list[0].kwargs["json"],
+            {"userInfo": {"Login": "user", "Password": "password"}},
+        )
 
     def test_empty_response_is_rejected(self):
         response = Mock()
         response.raise_for_status.return_value = None
         response.json.side_effect = [
-            {"Success": True, "token": "token"},
+            {"success": True, "token": "test-token", "reason": None},
             {"FormatType": ".json.zip", "ContentResponse": ""},
         ]
+        client = GmeMarketClient(username="user", password="password",
+                                 session=Mock(post=Mock(return_value=response)))
+        with self.assertRaises(GmeError):
+            client.request_pun_hourly(TARGET)
+
+    def test_authentication_failure_uses_real_lowercase_response(self):
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {
+            "success": False, "token": None, "reason": "Invalid credentials",
+        }
         client = GmeMarketClient(username="user", password="password",
                                  session=Mock(post=Mock(return_value=response)))
         with self.assertRaises(GmeError):
