@@ -138,7 +138,7 @@ class GmeClientTests(unittest.TestCase):
         self.assertEqual(session.post.call_count, 2)
         self.assertEqual(
             session.post.call_args_list[0].kwargs["json"],
-            {"userInfo": {"Login": "user", "Password": "password"}},
+            {"Login": "user", "Password": "password"},
         )
 
     def test_empty_response_is_rejected(self):

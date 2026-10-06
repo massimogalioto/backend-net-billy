@@ -48,7 +48,7 @@ class GmeMarketClient:
             response = self.session.post(
                 f"{self.base_url}/api/v1/Auth",
                 headers={"Content-Type": "application/json"},
-                json={"userInfo": {"Login": self.username, "Password": self.password}},
+                json={"Login": self.username, "Password": self.password},
                 timeout=self.timeout,
             )
             response.raise_for_status()
