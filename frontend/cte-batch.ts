@@ -3,9 +3,15 @@ export const MAX_CONCURRENT = 2;
 export type Status = "IN ATTESA" | "ELABORAZIONE" | "SALVATAGGIO" | "COMPLETATA" | "ERRORE";
 export type Result = {
   filename: string; success: boolean; output_ai: Record<string, unknown> | null;
-  airtable_id: string | null; error: string | null;
+  airtable_id: string | null; error: string | null; correctable?: boolean;
+  validation_errors?: { field: string; message: string }[];
 };
 export type Item = Result & { file: File; status: Status; id: number };
+
+export type ValidationResponse = { status: "validation_error"; message: string; errors: { field: string; message: string }[]; extracted_data: Record<string, unknown> };
+export class ValidationError extends Error {
+  constructor(public readonly validation: ValidationResponse) { super(validation.message); }
+}
 
 export function selectPdfs(files: File[]): Item[] {
   return files.filter(file => /\.pdf$/i.test(file.name)).map((file, id) => ({
@@ -22,7 +28,10 @@ async function request(url: string, init: RequestInit) {
     let data;
     try { data = await response.json(); } catch { throw new Error(`Risposta del servizio non leggibile (HTTP ${response.status})`); }
     if (response.status === 409 && data.detail === "CTE già presente") throw new Error("Questa CTE risulta già presente nel tuo archivio.");
-    if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : `Errore HTTP ${response.status}: ${JSON.stringify(data.detail)}`);
+    if (!response.ok) {
+      if (response.status === 422 && data && typeof data === "object" && (data as { status?: string }).status === "validation_error") throw new ValidationError(data as ValidationResponse);
+      throw new Error(typeof data.detail === "string" ? data.detail : `Errore HTTP ${response.status}: ${JSON.stringify(data.detail)}`);
+    }
     return data;
   } catch (error) {
     if (controller.signal.aborted) throw new Error("Timeout: verificare PostgreSQL e Bucket prima di riprovare un salvataggio.");
@@ -36,6 +45,13 @@ async function pdfPayload(file: File) {
     reader.onload = () => resolve(String(reader.result).split(",", 2)[1] ?? ""); reader.readAsDataURL(file);
   });
   return { filename: file.name, content_base64 };
+}
+
+export async function saveManualCorrection(item: Item, baseUrl: string, corrected: Record<string, unknown>) {
+  return request(`${baseUrl}/salva-offerta-manuale`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...corrected, fonte_cte: corrected.fonte_cte || item.filename, cte_pdf: await pdfPayload(item.file) }),
+  });
 }
 
 // Only MAX_CONCURRENT workers are started, each handling extraction AND saving.
@@ -63,7 +79,10 @@ export async function runBatch(items: Item[], baseUrl: string, update: (id: numb
         if (!saved.successo || !saved.id) throw new Error("Salvataggio PostgreSQL non confermato");
         update(item.id, { status: "COMPLETATA", success: true, output_ai: output, airtable_id: saved.id, error: null });
       } catch (error) {
-        update(item.id, { status: "ERRORE", success: false, output_ai: output, airtable_id: null, error: error instanceof Error ? error.message : "Errore inatteso" });
+        const validation = error instanceof ValidationError ? error.validation : null;
+        update(item.id, { status: "ERRORE", success: false, output_ai: validation?.extracted_data ?? output, airtable_id: null,
+          correctable: !!validation, validation_errors: validation?.errors,
+          error: error instanceof Error ? error.message : "Errore inatteso" });
       }
     }
   }

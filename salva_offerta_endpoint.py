@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Header
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError, validator
 from database_service import ConfigurationError, find_duplicate_cte_offer, insert_offer
 from fastapi.responses import JSONResponse
 from storage_service import delete_pdf, upload_cte_pdf
@@ -33,11 +33,67 @@ class OffertaInput(BaseModel):
     cte_pdf: CtePdfInput | None = None
     cte_retry_token: str | None = Field(default=None, max_length=200)
 
+    @validator("tipo_fornitura", pre=True)
+    def normalize_supply_type(cls, value):
+        normalized = str(value).strip().lower() if value is not None else ""
+        if normalized == "luce":
+            return "Luce"
+        if normalized == "gas":
+            return "Gas"
+        raise ValueError("Campo obbligatorio o non riconosciuto")
+
+
+def _validation_error(payload: dict, error: ValidationError):
+    errors = []
+    for item in error.errors():
+        field = str(item["loc"][-1])
+        errors.append({"field": field, "message": "Campo obbligatorio o non riconosciuto"})
+    extracted_data = {key: value for key, value in payload.items()
+                      if key not in {"cte_pdf", "cte_retry_token", "tenant_id"}}
+    return JSONResponse(status_code=422, content={
+        "status": "validation_error",
+        "message": "Tipo fornitura non riconosciuto" if any(
+            item["field"] == "tipo_fornitura" for item in errors
+        ) else "Dati CTE non validi",
+        "errors": errors,
+        "extracted_data": extracted_data,
+    })
+
+
+def _validated_offer(payload: dict | OffertaInput):
+    if isinstance(payload, OffertaInput):
+        return payload
+    try:
+        return OffertaInput(**payload)
+    except ValidationError as error:
+        return _validation_error(payload, error)
+
 @router.post("/salva-offerta", summary="Salva un'offerta CTE in PostgreSQL")
-def salva(offerta: OffertaInput, x_api_key: str = Header(None)):
+def salva(payload: dict, x_api_key: str = Header(None)):
     from os import getenv
     if x_api_key != getenv("API_SECRET_KEY"):
         raise HTTPException(status_code=401, detail="Chiave API non valida")
+
+    offerta = _validated_offer(payload)
+    if isinstance(offerta, JSONResponse):
+        return offerta
+
+    return _salva_validata(offerta)
+
+
+@router.post("/salva-offerta-manuale", summary="Salva una CTE corretta manualmente senza rieseguire l'AI")
+def salva_manuale(payload: dict, x_api_key: str = Header(None)):
+    from os import getenv
+    if x_api_key != getenv("API_SECRET_KEY"):
+        raise HTTPException(status_code=401, detail="Chiave API non valida")
+
+    offerta = _validated_offer(payload)
+    if isinstance(offerta, JSONResponse):
+        return offerta
+    return _salva_validata(offerta)
+
+
+def _salva_validata(offerta: OffertaInput):
 
     dati = offerta.dict(exclude={"cte_pdf", "cte_retry_token"})
     if offerta.cte_retry_token:

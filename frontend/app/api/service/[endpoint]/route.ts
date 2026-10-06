@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
-const allowed = new Set(["upload-cte", "upload-bolletta", "salva-offerta", "confronta"]);
+const allowed = new Set(["upload-cte", "upload-bolletta", "salva-offerta", "salva-offerta-manuale", "confronta"]);
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 export async function POST(request: NextRequest, context: { params: Promise<{ endpoint: string }> }) {

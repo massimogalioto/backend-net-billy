@@ -34,7 +34,7 @@ def estrai_dati_offerta_cte(testo: str) -> dict:
             "- costo_fisso (potresti trovarlo scritto anche come  commercializzazione o CCV, se l'importo è maggiore di 30 euro dividilo per 12 e mostra il risultato)\n"
             "- validita (data in formato 'YYYY-MM-DD', oppure se non disponibile aggiungi 3 mesi alla data di caricamento)\n"
             "- vincoli (es. 'Durata minima 12 mesi') o null\n"
-            "- tipo_fornitura (Luce o Gas se sono presenti tutti e due scegli sempre solo LUCE)\n"
+            "- tipo_fornitura: restituisci esclusivamente 'Luce', 'Gas' oppure null se non determinabile. Usa tutto il contenuto della CTE: Luce se trovi energia elettrica, POD, kWh, €/kWh, PUN, potenza impegnata/disponibile; Gas se trovi gas naturale, PDR, Smc, €/Smc o PSV. Non inventare il valore se ambiguo.\n"
             "- min_power_kw (numero decimale o null: limite minimo esplicito di potenza impegnata, contrattuale o disponibile, normalizzato in kW)\n"
             "- max_power_kw (numero decimale o null: limite massimo esplicito di potenza impegnata, contrattuale o disponibile, normalizzato in kW)\n\n"
             "Cerca condizioni come 'da 25 kW in su', 'fino a 15 kW' o 'da 10 kW a 30 kW'. Se non esiste un limite chiaramente dichiarato, restituisci entrambi null. Non inventare limiti.\n\n"

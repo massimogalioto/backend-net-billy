@@ -7,7 +7,7 @@ describe("collegamento statico", () => {
     vi.stubGlobal("window", {});
     vi.stubGlobal("sessionStorage", { getItem: () => JSON.stringify({ url: "https://backend.example/", key: "secret-test" }) });
     const { connectionRequest } = await import("./connection");
-    for (const endpoint of ["upload-cte", "salva-offerta", "upload-bolletta", "confronta"]) {
+    for (const endpoint of ["upload-cte", "salva-offerta", "salva-offerta-manuale", "upload-bolletta", "confronta"]) {
       const [url, init] = connectionRequest(`/api/service/${endpoint}`, { method: "POST" });
       expect(url).toBe(`https://backend.example/${endpoint}`);
       expect(new Headers(init.headers).get("x-api-key")).toBe("secret-test");

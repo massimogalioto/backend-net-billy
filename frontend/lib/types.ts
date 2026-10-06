@@ -1,7 +1,8 @@
 export type Offerta = {
   fornitore: string; nome_offerta: string; tipologia_cliente: string; tariffa: string;
   prezzo_kwh: number | null; spread: number | null; costo_fisso: number | null;
-  validita: string | null; fonte_cte: string | null; vincoli: string | null; tipo_fornitura: string;
+  min_power_kw?: number | null; max_power_kw?: number | null;
+  validita: string | null; valid_until?: string | null; fonte_cte: string | null; vincoli: string | null; tipo_fornitura: string;
 };
 export type Bolletta = {
   cliente?: string; indirizzo?: string; pod?: string; kwh_totali: number;

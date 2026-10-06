@@ -59,6 +59,32 @@ class DuplicateTests(unittest.TestCase):
         self.assertIsNone(offer.min_power_kw)
         self.assertIsNone(offer.max_power_kw)
 
+    def test_validation_error_keeps_extracted_data_without_pdf_or_tenant(self):
+        payload = {**OFFER, "tipo_fornitura": None, "tenant_id": "browser-tenant",
+                   "cte_pdf": {"filename": "test.pdf", "content_base64": "secret"}}
+        with patch.dict("os.environ", {"API_SECRET_KEY": "test"}):
+            response = endpoint.salva(payload, "test")
+        self.assertEqual(response.status_code, 422)
+        body = json.loads(response.body)
+        self.assertEqual(body["status"], "validation_error")
+        self.assertEqual(body["extracted_data"]["tipo_fornitura"], None)
+        self.assertNotIn("cte_pdf", body["extracted_data"])
+        self.assertNotIn("tenant_id", body["extracted_data"])
+
+    def test_manual_save_reuses_standard_duplicate_and_pdf_flow_without_ai(self):
+        payload = {**OFFER, "tipo_fornitura": "luce", "cte_pdf": {
+            "filename": "test.pdf", "content_base64": base64.b64encode(b"%PDF-original").decode(),
+        }}
+        with patch.dict("os.environ", {"API_SECRET_KEY": "test"}), patch.object(
+            endpoint, "find_duplicate_cte_offer", return_value=None
+        ) as duplicate, patch.object(
+            endpoint, "upload_cte_pdf", return_value={"object_key": "cte/key", "filename": "test.pdf", "content_type": "application/pdf", "size_bytes": 13}
+        ) as upload, patch.object(endpoint, "insert_offer", return_value="new") as insert:
+            self.assertEqual(endpoint.salva_manuale(payload, "test"), {"successo": True, "id": "new"})
+        duplicate.assert_called_once()
+        upload.assert_called_once()
+        insert.assert_called_once()
+
     def test_duplicate_returns_flat_409_without_upload_or_insert(self):
         offer = endpoint.OffertaInput(**OFFER, cte_pdf={"filename": "test.pdf",
             "content_base64": base64.b64encode(b"%PDF-original").decode()})
