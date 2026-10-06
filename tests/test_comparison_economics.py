@@ -10,13 +10,13 @@ from unittest.mock import Mock, patch
 def load_comparison():
     database = types.ModuleType("database_service")
     database.get_offerte = Mock()
-    market = types.ModuleType("airtable_service")
+    market = types.ModuleType("market_price_service")
     market.get_prezzo_mercato = Mock()
     spec = importlib.util.spec_from_file_location(
         "economic_comparison", Path(__file__).resolve().parents[1] / "confronto.py"
     )
     module = importlib.util.module_from_spec(spec)
-    with patch.dict(sys.modules, {"database_service": database, "airtable_service": market}):
+    with patch.dict(sys.modules, {"database_service": database, "market_price_service": market}):
         spec.loader.exec_module(module)
     return module
 

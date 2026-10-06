@@ -1,5 +1,5 @@
 from database_service import get_offerte
-from airtable_service import get_prezzo_mercato
+from market_price_service import get_prezzo_mercato
 from datetime import datetime
 import logging
 

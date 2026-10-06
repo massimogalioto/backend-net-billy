@@ -2,8 +2,22 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
-const allowed = new Set(["upload-cte", "upload-bolletta", "salva-offerta", "salva-offerta-manuale", "confronta"]);
+const allowed = new Set(["upload-cte", "upload-bolletta", "salva-offerta", "salva-offerta-manuale", "confronta", "market-prices-psv"]);
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
+
+export async function GET(request: NextRequest, context: { params: Promise<{ endpoint: string }> }) {
+  const { endpoint } = await context.params;
+  if (endpoint !== "market-prices-psv") return NextResponse.json({ detail: "Endpoint non disponibile" }, { status: 404 });
+  if (!process.env.BACKEND_URL) return NextResponse.json({ detail: "Collegamento al servizio non configurato" }, { status: 503 });
+  try {
+    const headers = new Headers();
+    if (process.env.API_SECRET_KEY) headers.set("x-api-key", process.env.API_SECRET_KEY);
+    const response = await fetch(`${process.env.BACKEND_URL.replace(/\/$/, "")}/${endpoint}`, { headers, cache: "no-store", signal: AbortSignal.timeout(30_000) });
+    return NextResponse.json(await response.json(), { status: response.status, headers: { "Cache-Control": "no-store" } });
+  } catch {
+    return NextResponse.json({ detail: "Prezzi PSV non raggiungibili" }, { status: 502 });
+  }
+}
 
 export async function POST(request: NextRequest, context: { params: Promise<{ endpoint: string }> }) {
   const { endpoint } = await context.params;

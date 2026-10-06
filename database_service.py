@@ -154,26 +154,27 @@ def get_offer_pdf(offer_id: str) -> dict[str, Any] | None:
 
 
 def upsert_market_price(*, market: str, reference_date: date, value_eur_mwh: Decimal,
-                        value_eur_kwh: Decimal, source: str) -> str:
+                        value_eur_kwh: Decimal, source: str, observation_count: int) -> str:
     """Create or refresh one daily market price without changing ``disp``."""
     with _connection() as conn, conn.cursor() as cur:
         cur.execute(
             """INSERT INTO market_prices
-                   (market, reference_date, value_eur_mwh, value_eur_kwh, source)
-               VALUES (%s, %s, %s, %s, %s)
+                   (market, reference_date, value_eur_mwh, value_eur_kwh, source, observation_count)
+               VALUES (%s, %s, %s, %s, %s, %s)
                ON CONFLICT (market, reference_date) DO UPDATE
                SET value_eur_mwh = EXCLUDED.value_eur_mwh,
                    value_eur_kwh = EXCLUDED.value_eur_kwh,
                    source = EXCLUDED.source,
+                   observation_count = EXCLUDED.observation_count,
                    updated_at = NOW()
                RETURNING (xmax = 0) AS inserted""",
-            (market, reference_date, value_eur_mwh, value_eur_kwh, source),
+            (market, reference_date, value_eur_mwh, value_eur_kwh, source, observation_count),
         )
         return "insert" if cur.fetchone()["inserted"] else "update"
 
 
 def get_monthly_market_prices(market: str, year: int, month: int) -> list[dict[str, Any]]:
-    """Return daily rows; hourly counts are not stored, so no weighted aggregate is inferred."""
+    """Return daily prices without inferring a monthly aggregate."""
     with _connection() as conn, conn.cursor() as cur:
         cur.execute(
             """SELECT reference_date, value_eur_mwh, value_eur_kwh, disp
@@ -186,3 +187,63 @@ def get_monthly_market_prices(market: str, year: int, month: int) -> list[dict[s
         )
         return [{key: _normalize_numeric(value) for key, value in row.items()}
                 for row in cur.fetchall()]
+
+
+class PunDataError(RuntimeError):
+    """PUN daily data must be reimported before calculating a monthly value."""
+
+
+def get_pun_month_price(reference_date: date, *, completed_before: date | None = None) -> dict[str, Any] | None:
+    """Weight completed daily PUN prices by their actual GME observation counts."""
+    with _connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """SELECT SUM(value_eur_kwh * observation_count)
+                          / NULLIF(SUM(observation_count), 0) AS prezzo_medio,
+                      AVG(COALESCE(disp, 0)) AS disp,
+                      COUNT(*) AS days,
+                      COUNT(*) FILTER (WHERE observation_count IS NULL
+                          OR observation_count NOT IN (23, 24, 25)
+                          OR value_eur_kwh IS NULL) AS invalid_days
+               FROM market_prices
+               WHERE market = 'PUN'
+                 AND reference_date >= %s
+                 AND reference_date < %s + INTERVAL '1 month'
+                 AND reference_date < %s""",
+            (reference_date.replace(day=1), reference_date.replace(day=1),
+             completed_before or reference_date),
+        )
+        row = cur.fetchone()
+        if not row or not row["days"]:
+            return None
+        if row["invalid_days"]:
+            raise PunDataError(
+                f"PUN {reference_date:%Y-%m}: {row['invalid_days']} giorni senza "
+                "observation_count valido o prezzo. Reimportare i giorni dal GME."
+            )
+        return {"prezzo_medio": row["prezzo_medio"], "disp": row["disp"]}
+
+
+def get_psv_month_price(reference_date: date) -> dict[str, Any] | None:
+    with _connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """SELECT reference_date, value_eur_smc, disp
+               FROM market_prices
+               WHERE market = 'PSV' AND reference_date = %s""",
+            (reference_date.replace(day=1),),
+        )
+        return cur.fetchone()
+
+
+def upsert_psv_month_price(reference_date: date, value_eur_smc: Decimal, disp: Decimal) -> str:
+    with _connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO market_prices
+                   (market, reference_date, value_eur_smc, disp, source)
+               VALUES ('PSV', %s, %s, %s, 'MANUAL')
+               ON CONFLICT (market, reference_date) DO UPDATE
+               SET value_eur_smc = EXCLUDED.value_eur_smc,
+                   disp = EXCLUDED.disp, source = EXCLUDED.source, updated_at = NOW()
+               RETURNING (xmax = 0) AS inserted""",
+            (reference_date.replace(day=1), value_eur_smc, disp),
+        )
+        return "insert" if cur.fetchone()["inserted"] else "update"

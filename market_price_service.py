@@ -1,13 +1,50 @@
 """Normalization and import orchestration for daily market prices."""
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Callable
 
-from database_service import upsert_market_price
+from database_service import (upsert_market_price, get_pun_month_price,
+                              get_psv_month_price, PunDataError)
 
 
 class MarketPriceError(RuntimeError):
     pass
+
+
+def previous_month(reference_date: date) -> date:
+    return (reference_date.replace(day=1) - timedelta(days=1)).replace(day=1)
+
+
+def get_prezzo_mercato(tipo_fornitura: str, data_str: str) -> dict[str, float]:
+    comparison_date = date.fromisoformat(data_str)
+    reference_date = comparison_date.replace(day=1)
+    if tipo_fornitura.strip().lower() == "luce":
+        try:
+            row = get_pun_month_price(reference_date, completed_before=comparison_date)
+            if row is None:
+                row = get_pun_month_price(previous_month(reference_date), completed_before=comparison_date)
+        except PunDataError as error:
+            # Invalid historical counts must not silently trigger another average/fallback.
+            raise MarketPriceError(str(error)) from error
+        if row is None:
+            raise MarketPriceError(f"PUN non disponibile per {reference_date:%Y-%m} né per {previous_month(reference_date):%Y-%m}")
+        price = row["prezzo_medio"]
+    elif tipo_fornitura.strip().lower() == "gas":
+        row = get_psv_month_price(reference_date)
+        if row is None:
+            row = get_psv_month_price(previous_month(reference_date))
+        if row is None:
+            raise MarketPriceError(
+                f"PSV non disponibile per {reference_date:%Y-%m} "
+                f"né per {previous_month(reference_date):%Y-%m}"
+            )
+        price = row["value_eur_smc"]
+    else:
+        raise MarketPriceError(f"Tipo fornitura non supportato: {tipo_fornitura}")
+    if price is None:
+        raise MarketPriceError("Prezzo di mercato privo del valore richiesto")
+    # disp is returned separately: the comparison adds it once for variable offers.
+    return {"prezzo_medio": float(price), "disp": float(row["disp"] or 0)}
 
 
 def eur_mwh_to_eur_kwh(value_eur_mwh: Decimal) -> Decimal:
@@ -48,7 +85,7 @@ def import_pun_date(target_date: date, client: Any,
     value_eur_kwh = eur_mwh_to_eur_kwh(value_eur_mwh)
     action = persist(
         market="PUN", reference_date=target_date, value_eur_mwh=value_eur_mwh,
-        value_eur_kwh=value_eur_kwh, source="GME",
+        value_eur_kwh=value_eur_kwh, source="GME", observation_count=observations,
     )
     return {
         "market": "PUN", "reference_date": target_date, "observations": observations,

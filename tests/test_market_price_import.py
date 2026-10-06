@@ -64,6 +64,14 @@ class MarketPriceServiceTests(unittest.TestCase):
         self.assertEqual(import_pun_date(TARGET, client, persist)["action"], "insert")
         self.assertEqual(import_pun_date(TARGET, client, persist)["action"], "update")
         self.assertEqual(len(stored), 1)
+        self.assertEqual(stored[("PUN", TARGET)]["observation_count"], 24)
+
+    def test_import_persists_real_dst_observation_counts(self):
+        for count in (23, 24, 25):
+            persist = Mock(return_value="insert")
+            client = Mock(request_pun_hourly=Mock(return_value=pun_rows(count)))
+            import_pun_date(TARGET, client, persist)
+            self.assertEqual(persist.call_args.kwargs["observation_count"], count)
 
     def test_upsert_uses_real_unique_key_and_never_updates_disp(self):
         class Cursor:
@@ -102,7 +110,7 @@ class MarketPriceServiceTests(unittest.TestCase):
         try:
             action = database_service.upsert_market_price(
                 market="PUN", reference_date=TARGET, value_eur_mwh=Decimal("150"),
-                value_eur_kwh=Decimal("0.15"), source="GME",
+                value_eur_kwh=Decimal("0.15"), source="GME", observation_count=24,
             )
         finally:
             database_service._connection = original_connection
@@ -110,6 +118,7 @@ class MarketPriceServiceTests(unittest.TestCase):
         self.assertEqual(action, "update")
         self.assertIn("on conflict (market, reference_date) do update", normalized_sql)
         self.assertNotIn("disp =", normalized_sql)
+        self.assertIn("observation_count = excluded.observation_count", normalized_sql)
 
     def test_default_date_uses_rome_calendar_not_utc_day(self):
         # 23:30 UTC is already the following calendar day in Rome in October.
