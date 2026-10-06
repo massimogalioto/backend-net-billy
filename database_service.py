@@ -128,3 +128,38 @@ def get_offer_pdf(offer_id: str) -> dict[str, Any] | None:
             (offer_id, tenant_id),
         )
         return cur.fetchone()
+
+
+def upsert_market_price(*, market: str, reference_date: date, value_eur_mwh: Decimal,
+                        value_eur_kwh: Decimal, source: str) -> str:
+    """Create or refresh one daily market price without changing ``disp``."""
+    with _connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO market_prices
+                   (market, reference_date, value_eur_mwh, value_eur_kwh, source)
+               VALUES (%s, %s, %s, %s, %s)
+               ON CONFLICT (market, reference_date) DO UPDATE
+               SET value_eur_mwh = EXCLUDED.value_eur_mwh,
+                   value_eur_kwh = EXCLUDED.value_eur_kwh,
+                   source = EXCLUDED.source,
+                   updated_at = NOW()
+               RETURNING (xmax = 0) AS inserted""",
+            (market, reference_date, value_eur_mwh, value_eur_kwh, source),
+        )
+        return "insert" if cur.fetchone()["inserted"] else "update"
+
+
+def get_monthly_market_prices(market: str, year: int, month: int) -> list[dict[str, Any]]:
+    """Return daily rows; hourly counts are not stored, so no weighted aggregate is inferred."""
+    with _connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """SELECT reference_date, value_eur_mwh, value_eur_kwh, disp
+               FROM market_prices
+               WHERE market = %s
+                 AND reference_date >= make_date(%s, %s, 1)
+                 AND reference_date < make_date(%s, %s, 1) + INTERVAL '1 month'
+               ORDER BY reference_date""",
+            (market, year, month, year, month),
+        )
+        return [{key: _normalize_numeric(value) for key, value in row.items()}
+                for row in cur.fetchall()]
