@@ -130,7 +130,10 @@ class GmeClientTests(unittest.TestCase):
         response.raise_for_status.return_value = None
         response.json.side_effect = [
             {"success": True, "token": "test-token", "reason": None},
-            {"FormatType": ".json.zip", "ContentResponse": base64.b64encode(archive.getvalue()).decode()},
+            {
+                "requestId": "123", "formatType": ".json.zip", "resultRequest": None,
+                "contentResponse": base64.b64encode(archive.getvalue()).decode(),
+            },
         ]
         session = Mock(post=Mock(return_value=response))
         client = GmeMarketClient(username="user", password="password", session=session)
@@ -140,13 +143,26 @@ class GmeClientTests(unittest.TestCase):
             session.post.call_args_list[0].kwargs["json"],
             {"Login": "user", "Password": "password"},
         )
+        self.assertEqual(
+            session.post.call_args_list[1].kwargs["json"],
+            {
+                "Platform": "PublicMarketResults", "Segment": "MGP",
+                "DataName": "ME_ZonalPrices", "IntervalStart": 20261005,
+                "IntervalEnd": 20261005, "Attributes": {"GranularityType": "PT60"},
+            },
+        )
+        self.assertEqual(
+            session.post.call_args_list[1].kwargs["headers"],
+            {"Authorization": "Bearer test-token", "Content-Type": "application/json"},
+        )
 
     def test_empty_response_is_rejected(self):
         response = Mock()
         response.raise_for_status.return_value = None
         response.json.side_effect = [
             {"success": True, "token": "test-token", "reason": None},
-            {"FormatType": ".json.zip", "ContentResponse": ""},
+            {"requestId": "123", "formatType": ".json.zip", "resultRequest": None,
+             "contentResponse": ""},
         ]
         client = GmeMarketClient(username="user", password="password",
                                  session=Mock(post=Mock(return_value=response)))
@@ -162,6 +178,19 @@ class GmeClientTests(unittest.TestCase):
         client = GmeMarketClient(username="user", password="password",
                                  session=Mock(post=Mock(return_value=response)))
         with self.assertRaises(GmeError):
+            client.request_pun_hourly(TARGET)
+
+    def test_request_data_result_request_is_an_error(self):
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.side_effect = [
+            {"success": True, "token": "test-token", "reason": None},
+            {"requestId": "123", "formatType": ".json.zip",
+             "resultRequest": "No data available", "contentResponse": None},
+        ]
+        client = GmeMarketClient(username="user", password="password",
+                                 session=Mock(post=Mock(return_value=response)))
+        with self.assertRaisesRegex(GmeError, "No data available"):
             client.request_pun_hourly(TARGET)
 
     def test_timeout_is_reported(self):

@@ -74,23 +74,29 @@ class GmeMarketClient:
     def request_pun_hourly(self, target_date: date) -> list[dict[str, Any]]:
         """Request MGP zonal prices at PT60 and return the decoded JSON rows."""
         token = self._authenticate()
+        interval = int(target_date.strftime("%Y%m%d"))
         request_payload = {
             "Platform": "PublicMarketResults",
             "Segment": "MGP",
             "DataName": "ME_ZonalPrices",
-            "IntervalStart": target_date.strftime("%Y%m%d"),
-            "IntervalEnd": target_date.strftime("%Y%m%d"),
+            "IntervalStart": interval,
+            "IntervalEnd": interval,
             "Attributes": {"GranularityType": "PT60"},
         }
         try:
             response = self.session.post(
                 f"{self.base_url}/api/v1/RequestData",
-                headers={"Authorization": f"Bearer {token}"},
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                 json=request_payload,
                 timeout=self.timeout,
             )
             response.raise_for_status()
             envelope = response.json()
+        except requests.HTTPError as exc:
+            status_code = getattr(response, "status_code", "unknown")
+            body = getattr(response, "text", "")
+            body_summary = body[:500] if isinstance(body, str) else ""
+            raise GmeError(f"Errore HTTP GME {status_code}: {body_summary}") from exc
         except requests.Timeout as exc:
             raise GmeError("Timeout durante la richiesta dati GME") from exc
         except requests.RequestException as exc:
@@ -100,11 +106,19 @@ class GmeMarketClient:
 
         if not isinstance(envelope, dict):
             raise GmeError("Busta GME non valida")
-        if envelope.get("FormatType") != ".json.zip":
+        request_id = envelope.get("requestId", envelope.get("RequestId"))
+        format_type = envelope.get("formatType", envelope.get("FormatType"))
+        result_request = envelope.get("resultRequest", envelope.get("ResultRequest"))
+        encoded = envelope.get("contentResponse", envelope.get("ContentResponse"))
+        if result_request is not None:
+            raise GmeError(f"Errore GME RequestData: {result_request}")
+        if format_type != ".json.zip":
             raise GmeError("GME non ha restituito dati JSON compressi")
-        encoded = envelope.get("ContentResponse")
         if not isinstance(encoded, str) or not encoded:
-            raise GmeError("Dataset GME vuoto")
+            raise GmeError("ContentResponse GME mancante o vuoto")
+        logger.info("[GME] requestId=%s", request_id)
+        logger.info("[GME] formatType=%s", format_type)
+        logger.info("[GME] compressed_response_received=true")
         if len(encoded) > ((self.max_response_bytes * 4 + 2) // 3 + 4):
             raise GmeError("Risposta GME oltre il limite configurato")
         try:
