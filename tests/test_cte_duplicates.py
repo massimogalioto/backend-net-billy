@@ -28,8 +28,8 @@ class DuplicateTests(unittest.TestCase):
         result, (sql, params) = self.lookup({**OFFER, "tenant_id": "frontend-tenant"}, {"id": "existing"})
         self.assertEqual(result, "existing")
         self.assertEqual(params, ("tenant-a", "Edison", "Residenziale", "Luce", "Fisso",
-                                  "2026-12-31", 0.12, None, 10))
-        self.assertEqual(sql.count("IS NOT DISTINCT FROM"), 8)
+                                  "2026-12-31", 0.12, None, 10, None, None))
+        self.assertEqual(sql.count("IS NOT DISTINCT FROM"), 10)
         for excluded in ("offer_name", "pdf_filename", "pdf_object_key", "source_cte"):
             self.assertNotIn(excluded, sql)
 
@@ -39,7 +39,7 @@ class DuplicateTests(unittest.TestCase):
                                           "fornitore": None, "tariffa": "Variabile"})
         self.assertIsNone(result)
         self.assertEqual(params, ("tenant-a", None, "Residenziale", "Luce", "Variabile",
-                                  None, None, 0.015, None))
+                                  None, None, 0.015, None, None, None))
 
     def test_price_tariff_and_tenant_changes_reach_lookup(self):
         _, (_, original) = self.lookup(OFFER)
@@ -48,6 +48,16 @@ class DuplicateTests(unittest.TestCase):
             self.assertNotEqual(original[index], changed[index])
         _, (_, changed) = self.lookup(OFFER, tenant="tenant-b")
         self.assertNotEqual(original[0], changed[0])
+
+    def test_different_power_ranges_are_part_of_the_duplicate_fingerprint(self):
+        _, (_, first) = self.lookup({**OFFER, "min_power_kw": 10, "max_power_kw": 20})
+        _, (_, second) = self.lookup({**OFFER, "min_power_kw": 21, "max_power_kw": 50})
+        self.assertNotEqual(first[-2:], second[-2:])
+
+    def test_offer_input_defaults_to_no_power_limits(self):
+        offer = endpoint.OffertaInput(**OFFER)
+        self.assertIsNone(offer.min_power_kw)
+        self.assertIsNone(offer.max_power_kw)
 
     def test_duplicate_returns_flat_409_without_upload_or_insert(self):
         offer = endpoint.OffertaInput(**OFFER, cte_pdf={"filename": "test.pdf",

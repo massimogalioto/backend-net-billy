@@ -22,6 +22,7 @@ def estrai_dati_bolletta(testo: str) -> dict:
             "- quota_fissa_vendita (sola quota fissa COMMERCIALE di vendita nella sezione Quota fissa, escludendo rete/oneri. Restituisci euro AL MESE: se indicata mensilmente usa quel valore, se indicata come totale del periodo dividila per mesi_bolletta una sola volta. Non includerla in spesa_vendita_energia. Se non identificabile restituisci null, senza inventare importi)\n"
             "- tipo_fornitura ('Luce' o 'Gas')\n"
             "- tipologia_cliente  (restituisci esclusivamente Residenziale se non è Altri Usi, Business se è altri usi)\n"
+            "- potenza_kw (potenza contrattuale o impegnata della fornitura, normalizzata in kW come numero decimale; non usare picchi o potenza misurata. Se non identificabile restituisci null)\n"
             "SPESA VENDITA ENERGIA ELETTRICA (o equivalente per gas):\n"
             "PRIORITÀ 1: se nella sezione Quota per consumi è presente 'di cui spesa per la vendita di energia elettrica', estrai SEMPRE l'importo in euro associato a quella sottovoce, non il totale superiore del riquadro e non la quota fissa dell'omonima sezione.\n"
             "PRIORITÀ 2: accetta diciture semanticamente equivalenti come 'spesa per la vendita di energia elettrica', 'componente vendita energia', 'spesa vendita energia', 'materia energia relativa alla vendita', 'componente energia del venditore', quando identificano la componente commerciale per consumi distinta da rete/oneri/trasporto/distribuzione.\n"

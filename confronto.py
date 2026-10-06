@@ -1,6 +1,9 @@
 from database_service import get_offerte
 from airtable_service import get_prezzo_mercato
 from datetime import datetime
+import logging
+
+logger = logging.getLogger("uvicorn.error")
 
 def confronta_offerte(bolletta):
     kwh_totali = bolletta["kwh_totali"]
@@ -16,7 +19,10 @@ def confronta_offerte(bolletta):
     spesa_mensile = (spesa_vendita_energia / mesi_bolletta) + quota_fissa
     prezzo_effettivo = spesa_mensile / kwh_mensili
 
-    offerte = get_offerte(tipo_fornitura, tipologia_cliente)
+    customer_power_kw = bolletta.get("potenza_kw")
+    if customer_power_kw is None:
+        logger.warning("customer_power_kw missing - power eligibility filter skipped")
+    offerte = get_offerte(tipo_fornitura, tipologia_cliente, customer_power_kw)
     #prezzo_mercato = get_prezzo_mercato(tipo_fornitura, data)
     dati_mercato = get_prezzo_mercato(tipo_fornitura, data)
     #ricavo sia prezzo del PUN/PSV che spesa per dispacciamento ccr ecc ecc

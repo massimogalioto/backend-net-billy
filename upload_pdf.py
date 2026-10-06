@@ -97,6 +97,7 @@ async def upload_bolletta(file: UploadFile = File(...)):
             "quota_fissa_vendita": dati["quota_fissa_vendita"], #modifica 05-09-2025
             "tipo_fornitura": dati["tipo_fornitura"],
             "tipologia_cliente": dati["tipologia_cliente"],
+            "potenza_kw": dati.get("potenza_kw"),
             "data_riferimento": data_oggi_iso()
         }
 

@@ -28,6 +28,8 @@ class OffertaInput(BaseModel):
     fonte_cte: str | None = None
     vincoli: str | None = None
     tipo_fornitura: str
+    min_power_kw: float | None = Field(default=None, ge=0)
+    max_power_kw: float | None = Field(default=None, ge=0)
     cte_pdf: CtePdfInput | None = None
     cte_retry_token: str | None = Field(default=None, max_length=200)
 

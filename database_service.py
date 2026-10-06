@@ -50,13 +50,28 @@ def _offer_fields(row: dict[str, Any]) -> dict[str, Any]:
         "Data validità": row["valid_from"],
         "Fonte CTE": row["source_cte"],
         "Note": row["notes"],
+        "min_power_kw": _normalize_numeric(row.get("min_power_kw")),
+        "max_power_kw": _normalize_numeric(row.get("max_power_kw")),
         "pdf_filename": row["pdf_filename"],
         "pdf_content_type": row["pdf_content_type"],
         "has_pdf": bool(row["pdf_object_key"]),
     }
 
 
-def get_offerte(tipo_fornitura: str, tipologia_cliente: str) -> list[dict[str, Any]]:
+def is_power_eligible(customer_power_kw: float | None, min_power_kw: Any,
+                      max_power_kw: Any) -> bool:
+    """Keep unrestricted offers visible when a bill has no contractual power."""
+    if customer_power_kw is None:
+        return True
+    customer_power = float(customer_power_kw)
+    minimum = _normalize_numeric(min_power_kw)
+    maximum = _normalize_numeric(max_power_kw)
+    return ((minimum is None or customer_power >= minimum) and
+            (maximum is None or customer_power <= maximum))
+
+
+def get_offerte(tipo_fornitura: str, tipologia_cliente: str,
+                customer_power_kw: float | None = None) -> list[dict[str, Any]]:
     tenant_id = default_tenant_id()
     with _connection() as conn, conn.cursor() as cur:
         cur.execute(
@@ -64,8 +79,12 @@ def get_offerte(tipo_fornitura: str, tipologia_cliente: str) -> list[dict[str, A
                WHERE tenant_id = %s AND supply_type = %s AND customer_type = %s
                  AND (valid_from IS NULL OR valid_from <= CURRENT_DATE)
                  AND (valid_until IS NULL OR valid_until >= CURRENT_DATE)
+                 AND (%s::numeric IS NULL OR
+                      ((min_power_kw IS NULL OR %s::numeric >= min_power_kw)
+                       AND (max_power_kw IS NULL OR %s::numeric <= max_power_kw)))
                ORDER BY created_at DESC""",
-            (tenant_id, tipo_fornitura, tipologia_cliente),
+            (tenant_id, tipo_fornitura, tipologia_cliente,
+             customer_power_kw, customer_power_kw, customer_power_kw),
         )
         return [{"id": str(row["id"]), "fields": _offer_fields(row)} for row in cur.fetchall()]
 
@@ -86,12 +105,15 @@ def find_duplicate_cte_offer(dati: dict[str, Any]) -> str | None:
                  AND fixed_price_kwh IS NOT DISTINCT FROM %s
                  AND spread_kwh IS NOT DISTINCT FROM %s
                  AND monthly_fixed_cost IS NOT DISTINCT FROM %s
+                 AND min_power_kw IS NOT DISTINCT FROM %s
+                 AND max_power_kw IS NOT DISTINCT FROM %s
                ORDER BY created_at, id LIMIT 1""",
             (tenant_id, *(value.strip() if isinstance(value, str) else value
                           for value in (dati.get("fornitore"), dati.get("tipologia_cliente"),
                                         dati.get("tipo_fornitura"), dati.get("tariffa"))),
              dati.get("valid_until") or None, dati.get("prezzo_kwh"),
-             dati.get("spread"), dati.get("costo_fisso")),
+             dati.get("spread"), dati.get("costo_fisso"), dati.get("min_power_kw"),
+             dati.get("max_power_kw")),
         )
         row = cur.fetchone()
         return str(row["id"]) if row else None
@@ -106,14 +128,15 @@ def insert_offer(dati: dict[str, Any], pdf_metadata: dict[str, Any] | None = Non
             """INSERT INTO cte_offers
                (tenant_id, supplier, offer_name, customer_type, supply_type, tariff_type,
                 fixed_price_kwh, spread_kwh, monthly_fixed_cost, valid_from, valid_until, source_cte,
-                notes, pdf_object_key, pdf_filename, pdf_content_type, pdf_size_bytes)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                notes, min_power_kw, max_power_kw, pdf_object_key, pdf_filename, pdf_content_type, pdf_size_bytes)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                RETURNING id""",
             (tenant_id, dati.get("fornitore"), dati.get("nome_offerta"),
              dati.get("tipologia_cliente"), dati.get("tipo_fornitura"), dati.get("tariffa"),
              dati.get("prezzo_kwh"), dati.get("spread"), dati.get("costo_fisso"), valid_from,
              dati.get("valid_until") or None,
-             dati.get("fonte_cte"), dati.get("vincoli"), metadata.get("object_key"),
+             dati.get("fonte_cte"), dati.get("vincoli"), dati.get("min_power_kw"),
+             dati.get("max_power_kw"), metadata.get("object_key"),
              metadata.get("filename"), metadata.get("content_type"), metadata.get("size_bytes")),
         )
         return str(cur.fetchone()["id"])
