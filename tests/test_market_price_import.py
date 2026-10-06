@@ -3,11 +3,13 @@ import io
 import json
 import unittest
 import zipfile
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from unittest.mock import Mock
 
 import database_service
+import import_market_prices as cron
 from gme_service import GmeConfigurationError, GmeError, GmeMarketClient
 from import_market_prices import default_target_date
 from market_price_service import (MarketPriceError, calculate_daily_pun,
@@ -113,6 +115,39 @@ class MarketPriceServiceTests(unittest.TestCase):
         # 23:30 UTC is already the following calendar day in Rome in October.
         now = datetime(2026, 10, 5, 23, 30, tzinfo=timezone.utc)
         self.assertEqual(default_target_date(now), date(2026, 10, 5))
+
+    def test_cli_manual_date_succeeds_and_emits_cron_status(self):
+        result = {
+            "market": "PUN", "reference_date": TARGET, "observations": 24,
+            "value_eur_mwh": Decimal("150"), "value_eur_kwh": Decimal("0.15"),
+            "action": "insert",
+        }
+        output = io.StringIO()
+        original_client = cron.GmeMarketClient
+        original_import = cron.import_pun_date
+        cron.GmeMarketClient = lambda: object()
+        cron.import_pun_date = lambda target_date, client: result
+        try:
+            with redirect_stdout(output):
+                self.assertEqual(cron.main(["--date", "2026-10-05"]), 0)
+        finally:
+            cron.GmeMarketClient = original_client
+            cron.import_pun_date = original_import
+        self.assertIn("[CRON] status=success", output.getvalue())
+
+    def test_cli_failure_returns_nonzero_and_emits_failed_status(self):
+        errors = io.StringIO()
+        original_client = cron.GmeMarketClient
+        original_import = cron.import_pun_date
+        cron.GmeMarketClient = lambda: object()
+        cron.import_pun_date = lambda target_date, client: (_ for _ in ()).throw(RuntimeError("GME down"))
+        try:
+            with redirect_stderr(errors):
+                self.assertEqual(cron.main(["--date", "2026-10-05"]), 1)
+        finally:
+            cron.GmeMarketClient = original_client
+            cron.import_pun_date = original_import
+        self.assertIn("[CRON] status=failed", errors.getvalue())
 
 
 class GmeClientTests(unittest.TestCase):

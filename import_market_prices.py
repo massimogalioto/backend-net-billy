@@ -30,11 +30,13 @@ def main(argv: list[str] | None = None) -> int:
         result = import_pun_date(target_date, GmeMarketClient())
     except Exception as exc:
         print(f"[GME] market=PUN reference_date={target_date} status=error error={exc}", file=sys.stderr)
+        print("[CRON] status=failed", file=sys.stderr)
         return 1
     print(f"[GME] market={result['market']} reference_date={result['reference_date']} "
           f"observations={result['observations']} value_eur_mwh={result['value_eur_mwh']} "
           f"value_eur_kwh={result['value_eur_kwh']}")
     print(f"[DB] action={result['action']}")
+    print("[CRON] status=success")
     return 0
 
 
