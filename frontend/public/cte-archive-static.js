@@ -20,7 +20,11 @@ if (root) {
     upload.className = `button ${showArchive ? "outline" : "primary"}`;
     archive.className = `button ${showArchive ? "primary" : "outline"}`;
     upload.setAttribute("aria-pressed", String(!showArchive)); archive.setAttribute("aria-pressed", String(showArchive));
-    if (showArchive) mountArchive(panel, { connection, request: async () => {
+    if (showArchive) mountArchive(panel, { connection, update: async (id, changes) => {
+      const settings = connection();
+      const response = await fetch(`${settings.url.replace(/\/+$/, "")}/cte-offers/${encodeURIComponent(id)}`, { method: "PATCH", headers: { "Content-Type": "application/json", ...(settings.key ? { "x-api-key": settings.key } : {}) }, body: JSON.stringify(changes) });
+      const data = await response.json(); if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Dati CTE non validi");
+    }, request: async () => {
       const settings = connection();
       const response = await fetch(`${settings.url.replace(/\/+$/, "")}/cte-offers`, { headers: settings.key ? { "x-api-key": settings.key } : undefined, signal: AbortSignal.timeout(30_000) });
       const data = await response.json(); if (!response.ok) throw new Error(data.detail || "Archivio CTE non disponibile"); return data;

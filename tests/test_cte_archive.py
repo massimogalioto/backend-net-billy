@@ -15,8 +15,11 @@ class Adapter:
     def __exit__(self, *args): pass
     def cursor(self): return self
     def execute(self, sql, params):
-        sql = sql.replace("%s::text", "?").replace("%s", "?").replace("CURRENT_DATE", "'2026-10-07'")
-        self.result = self.conn.execute(sql, params)
+        sql = sql.replace("%s::text", "?").replace("%s", "?").replace(" FOR UPDATE", "").replace("CURRENT_DATE", "'2026-10-07'")
+        self.result = self.conn.execute(sql, tuple(value.isoformat() if isinstance(value, date) else value for value in params))
+    def fetchone(self):
+        row = self.result.fetchone()
+        return dict(row) if row else None
     def fetchall(self): return [dict(row) for row in self.result.fetchall()]
 
 
@@ -71,6 +74,33 @@ class ArchiveTests(unittest.TestCase):
     def test_future_start_is_not_an_extra_archive_filter(self):
         self.conn.execute("UPDATE cte_offers SET valid_from = '2027-01-01' WHERE id = 'future'")
         self.assertIn("future", {row["id"] for row in database.list_cte_offers()})
+
+    def test_update_exact_date_notes_and_pdf_unchanged(self):
+        response = self.client.patch("/cte-offers/future", json={"valid_until": "2026-10-31", "notes": "First\nSecond"})
+        self.assertEqual(response.status_code, 200, response.text)
+        row = self.conn.execute("SELECT * FROM cte_offers WHERE id='future'").fetchone()
+        self.assertEqual(row["valid_until"], "2026-10-31")
+        self.assertEqual(row["notes"], "First\nSecond")
+        self.assertEqual(row["pdf_object_key"], "private/key.pdf")
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM cte_offers").fetchone()[0], 5)
+
+    def test_update_other_tenant_rejected(self):
+        response = self.client.patch("/cte-offers/other-tenant", json={"valid_until": "2026-10-31"})
+        self.assertEqual(response.status_code, 404)
+        self.assertIsNone(self.conn.execute("SELECT valid_until FROM cte_offers WHERE id='other-tenant'").fetchone()[0])
+
+    def test_power_validation_includes_stored_bound(self):
+        self.conn.execute("UPDATE cte_offers SET max_power_kw=10 WHERE id='future'")
+        self.assertEqual(self.client.patch("/cte-offers/future", json={"min_power_kw": 11}).status_code, 422)
+        self.assertEqual(self.client.patch("/cte-offers/future", json={"min_power_kw": 3, "max_power_kw": 2}).status_code, 422)
+
+    def test_invalid_dates_and_technical_fields_rejected(self):
+        for data in ({"valid_until": "2026-02-30"}, {"valid_until": "2026-10-31T00:00:00Z"}, {"tenant_id": "tenant-b"}, {"pdf_object_key": "changed"}, {"supply_type": "other"}, {"customer_type": "invented"}, {"tariff_type": "other"}):
+            self.assertEqual(self.client.patch("/cte-offers/future", json=data).status_code, 422, data)
+
+    def test_expired_edit_removed_from_active_archive(self):
+        self.assertEqual(self.client.patch("/cte-offers/future", json={"valid_until": "2026-10-01"}).status_code, 200)
+        self.assertNotIn("future", {row["id"] for row in database.list_cte_offers()})
 
 
 if __name__ == "__main__": unittest.main()

@@ -331,3 +331,31 @@ def upsert_psv_month_price(reference_date: date, value_eur_smc: Decimal, disp: D
             (reference_date.replace(day=1), value_eur_smc, disp),
         )
         return "insert" if cur.fetchone()["inserted"] else "update"
+
+
+def update_cte_offer(offer_id: str, changes: dict[str, Any]) -> bool:
+    """Update only commercial columns, under the existing backend tenant."""
+    allowed = {"supplier", "offer_name", "customer_type", "supply_type", "tariff_type",
+               "fixed_price_kwh", "spread_kwh", "monthly_fixed_cost", "min_power_kw",
+               "max_power_kw", "valid_from", "valid_until", "notes", "source_cte"}
+    if not changes or not changes.keys() <= allowed:
+        raise ValueError("Nessun campo commerciale valido")
+    tenant = default_tenant_id()
+    with _connection() as conn, conn.cursor() as cur:
+        cur.execute("SELECT * FROM cte_offers WHERE id = %s AND tenant_id = %s FOR UPDATE", (offer_id, tenant))
+        current = cur.fetchone()
+        if current is None:
+            return False
+        merged = {**current, **changes}
+        minimum, maximum = merged["min_power_kw"], merged["max_power_kw"]
+        if minimum is not None and maximum is not None and minimum > maximum:
+            raise ValueError("La potenza minima deve essere minore o uguale alla massima")
+        if "customer_type" in changes:
+            cur.execute("SELECT DISTINCT customer_type FROM cte_offers WHERE tenant_id = %s", (tenant,))
+            known = {row["customer_type"] for row in cur.fetchall()} | {"Residenziale", "Business"}
+            if changes["customer_type"] not in known:
+                raise ValueError("Tipologia cliente non riconosciuta")
+        assignments = ", ".join(f"{field} = %s" for field in changes)
+        cur.execute(f"UPDATE cte_offers SET {assignments} WHERE id = %s AND tenant_id = %s RETURNING id",
+                    (*changes.values(), offer_id, tenant))
+        return cur.fetchone() is not None
