@@ -137,7 +137,9 @@ class MarketPriceServiceTests(unittest.TestCase):
         cron.GmeMarketClient = lambda: object()
         cron.import_pun_date = lambda target_date, client: result
         try:
-            with redirect_stdout(output):
+            with patch.object(cron, "database_fingerprint", return_value={"host": "db", "database": "net_billy"}), patch.object(
+                cron, "get_pun_daily_record", return_value={"value_eur_kwh": Decimal("0.15"), "observation_count": 24}
+            ), redirect_stdout(output):
                 self.assertEqual(cron.main(["--date", "2026-10-05"]), 0)
         finally:
             cron.GmeMarketClient = original_client
@@ -151,7 +153,7 @@ class MarketPriceServiceTests(unittest.TestCase):
         cron.GmeMarketClient = lambda: object()
         cron.import_pun_date = lambda target_date, client: (_ for _ in ()).throw(RuntimeError("GME down"))
         try:
-            with redirect_stderr(errors):
+            with patch.object(cron, "database_fingerprint", return_value={"host": "db", "database": "net_billy"}), redirect_stderr(errors):
                 self.assertEqual(cron.main(["--date", "2026-10-05"]), 1)
         finally:
             cron.GmeMarketClient = original_client

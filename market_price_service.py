@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Callable
 
-from database_service import (upsert_market_price, get_pun_month_price,
+from database_service import (upsert_market_price, get_pun_month_price, database_fingerprint,
                               get_psv_month_price, PunDataError)
 
 
@@ -19,6 +19,8 @@ def get_prezzo_mercato(tipo_fornitura: str, data_str: str) -> dict[str, float]:
     comparison_date = date.fromisoformat(data_str)
     reference_date = comparison_date.replace(day=1)
     if tipo_fornitura.strip().lower() == "luce":
+        fingerprint = database_fingerprint()
+        print(f"[DB FINGERPRINT] host={fingerprint['host']} database={fingerprint['database']}")
         try:
             row = get_pun_month_price(reference_date, completed_before=comparison_date)
             if row is None:

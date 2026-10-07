@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 from gme_service import GmeMarketClient
 from market_price_service import import_pun_date
+from database_service import database_fingerprint, get_pun_daily_record
 
 
 ROME_TZ = ZoneInfo("Europe/Rome")
@@ -45,10 +46,22 @@ def month_days(month: date, today: date) -> list[date]:
 
 
 def print_result(result: dict) -> None:
-    print(f"[GME] market={result['market']} reference_date={result['reference_date']} "
-          f"observations={result['observations']} value_eur_mwh={result['value_eur_mwh']} "
-          f"value_eur_kwh={result['value_eur_kwh']}")
-    print(f"[DB] action={result['action']}")
+    print("[PUN IMPORT]")
+    print(f"reference_date={result['reference_date']}")
+    print(f"observations={result['observations']}")
+    print(f"value_eur_kwh={result['value_eur_kwh']}")
+    print(f"observation_count_to_db={result['observations']}")
+    print(f"db_action={result['action']}")
+    written = get_pun_daily_record(result["reference_date"])
+    print("[PUN DB VERIFY]")
+    print(f"reference_date={result['reference_date']}")
+    print(f"value_eur_kwh={written['value_eur_kwh'] if written else None}")
+    print(f"observation_count={written['observation_count'] if written else None}")
+
+
+def print_database_fingerprint() -> None:
+    fingerprint = database_fingerprint()
+    print(f"[DB FINGERPRINT] host={fingerprint['host']} database={fingerprint['database']}")
 
 
 def import_month(month: date) -> int:
@@ -78,6 +91,7 @@ def import_month(month: date) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    print_database_fingerprint()
     if args.month is not None:
         return import_month(args.month)
     target_date = args.target_date or default_target_date()

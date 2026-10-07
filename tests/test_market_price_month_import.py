@@ -20,7 +20,9 @@ class MonthImportTests(unittest.TestCase):
                         value_eur_mwh=Decimal("150"), value_eur_kwh=Decimal("0.15"), action="update")
         with patch.object(cli, "default_target_date", return_value=date(2026, 10, 5)), patch.object(
             cli, "GmeMarketClient", return_value=Mock()
-        ), patch.object(cli, "import_pun_date", side_effect=imported) as importer, redirect_stdout(output), redirect_stderr(errors):
+        ), patch.object(cli, "import_pun_date", side_effect=imported) as importer, patch.object(
+            cli, "database_fingerprint", return_value={"host": "db", "database": "net_billy"}
+        ), patch.object(cli, "get_pun_daily_record", return_value={"value_eur_kwh": Decimal("0.15"), "observation_count": 24}), redirect_stdout(output), redirect_stderr(errors):
             code = cli.main(["--month", month])
         return code, importer, output.getvalue(), errors.getvalue()
 
@@ -73,7 +75,7 @@ class MonthImportTests(unittest.TestCase):
     def test_no_arguments_preserves_daily_cron(self):
         result = dict(market="PUN", reference_date=date(2026, 10, 5), observations=24,
                       value_eur_mwh=150, value_eur_kwh=0.15, action="update")
-        with patch.object(cli, "default_target_date", return_value=date(2026, 10, 5)), patch.object(cli, "GmeMarketClient", return_value="client"), patch.object(cli, "import_pun_date", return_value=result) as importer, redirect_stdout(io.StringIO()) as output:
+        with patch.object(cli, "default_target_date", return_value=date(2026, 10, 5)), patch.object(cli, "GmeMarketClient", return_value="client"), patch.object(cli, "import_pun_date", return_value=result) as importer, patch.object(cli, "database_fingerprint", return_value={"host": "db", "database": "net_billy"}), patch.object(cli, "get_pun_daily_record", return_value={"value_eur_kwh": Decimal("0.15"), "observation_count": 24}), redirect_stdout(io.StringIO()) as output:
             self.assertEqual(cli.main([]), 0)
         importer.assert_called_once_with(date(2026, 10, 5), "client")
         self.assertIn("[CRON] status=success", output.getvalue())
@@ -100,7 +102,7 @@ class MonthImportTests(unittest.TestCase):
         client.request_pun_hourly.side_effect = lambda day: [
             {"FlowDate": day.strftime("%Y%m%d"), "Zone": "PUN", "Hour": hour, "Period": "1", "Price": "150"}
             for hour in range(1, expected[day.day - 1] + 1)]
-        with patch.object(database, "_connection", return_value=context), patch.object(cli, "default_target_date", return_value=date(2026, 10, 5)), patch.object(cli, "GmeMarketClient", return_value=client), redirect_stdout(io.StringIO()):
+        with patch.object(database, "_connection", return_value=context), patch.object(cli, "database_fingerprint", return_value={"host": "db", "database": "net_billy"}), patch.object(cli, "default_target_date", return_value=date(2026, 10, 5)), patch.object(cli, "GmeMarketClient", return_value=client), redirect_stdout(io.StringIO()):
             self.assertEqual(cli.main(["--month", "2026-10"]), 0)
         rows = conn.execute("SELECT observation_count FROM market_prices ORDER BY reference_date").fetchall()
         self.assertEqual([row["observation_count"] for row in rows], expected)

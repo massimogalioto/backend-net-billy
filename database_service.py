@@ -7,6 +7,7 @@ import os
 from decimal import Decimal
 from datetime import date
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 import psycopg
 from psycopg.rows import dict_row
@@ -29,6 +30,18 @@ def _connection():
     if not database_url:
         raise ConfigurationError("DATABASE_URL non configurato")
     return psycopg.connect(database_url, row_factory=dict_row)
+
+
+def database_fingerprint() -> dict[str, str]:
+    """Return only non-secret connection identifiers for temporary diagnostics."""
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        raise ConfigurationError("DATABASE_URL non configurato")
+    parsed = urlparse(database_url)
+    return {
+        "host": parsed.hostname or "unknown",
+        "database": unquote(parsed.path).lstrip("/") or "unknown",
+    }
 
 
 def _normalize_numeric(value: Any) -> Any:
@@ -173,6 +186,18 @@ def upsert_market_price(*, market: str, reference_date: date, value_eur_mwh: Dec
         return "insert" if cur.fetchone()["inserted"] else "update"
 
 
+def get_pun_daily_record(reference_date: date) -> dict[str, Any] | None:
+    """Read back a PUN row after an import, for temporary cron diagnostics."""
+    with _connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """SELECT reference_date, value_eur_kwh, observation_count
+               FROM market_prices
+               WHERE market = 'PUN' AND reference_date = %s""",
+            (reference_date,),
+        )
+        return cur.fetchone()
+
+
 def get_monthly_market_prices(market: str, year: int, month: int) -> list[dict[str, Any]]:
     """Return daily prices without inferring a monthly aggregate."""
     with _connection() as conn, conn.cursor() as cur:
@@ -196,6 +221,42 @@ class PunDataError(RuntimeError):
 def get_pun_month_price(reference_date: date, *, completed_before: date | None = None) -> dict[str, Any] | None:
     """Weight completed daily PUN prices by their actual GME observation counts."""
     with _connection() as conn, conn.cursor() as cur:
+        month_start = reference_date.replace(day=1)
+        completed_limit = completed_before or reference_date
+        cur.execute(
+            """SELECT reference_date, value_eur_kwh, observation_count
+               FROM market_prices
+               WHERE market = 'PUN'
+                 AND reference_date >= %s
+                 AND reference_date < %s + INTERVAL '1 month'
+                 AND reference_date < %s
+               ORDER BY reference_date""",
+            (month_start, month_start, completed_limit),
+        )
+        records = cur.fetchall()
+        valid_rows = 0
+        for record in records:
+            observations = record["observation_count"]
+            price = record["value_eur_kwh"]
+            if observations is None:
+                valid, reason = False, "observation_count_null"
+            elif not isinstance(observations, int):
+                valid, reason = False, "invalid_type"
+            elif observations == 0:
+                valid, reason = False, "observation_count_zero"
+            elif observations not in (23, 24, 25):
+                valid, reason = False, "invalid_observation_count"
+            elif price is None:
+                valid, reason = False, "value_eur_kwh_null"
+            else:
+                valid, reason = True, "ok"
+                valid_rows += 1
+            print("[PUN READER] "
+                  f"reference_date={record['reference_date']} value_eur_kwh={price} "
+                  f"observation_count={observations} valid={str(valid).lower()} reason={reason}")
+        print("[PUN READER SUMMARY] "
+              f"month={reference_date:%Y-%m} rows_found={len(records)} "
+              f"valid_rows={valid_rows} invalid_rows={len(records) - valid_rows}")
         cur.execute(
             """SELECT SUM(value_eur_kwh * observation_count)
                           / NULLIF(SUM(observation_count), 0) AS prezzo_medio,
@@ -209,8 +270,7 @@ def get_pun_month_price(reference_date: date, *, completed_before: date | None =
                  AND reference_date >= %s
                  AND reference_date < %s + INTERVAL '1 month'
                  AND reference_date < %s""",
-            (reference_date.replace(day=1), reference_date.replace(day=1),
-             completed_before or reference_date),
+            (month_start, month_start, completed_limit),
         )
         row = cur.fetchone()
         if not row or not row["days"]:
