@@ -76,7 +76,16 @@ try {
   await page.waitForFunction(() => !document.querySelector("dialog"));
   assert.equal(await page.locator('tr[data-offer-id="a"]').count(), 0);
   await page.setViewportSize({ width: 375, height: 800 });
-  assert.ok(await page.locator(".cte-archive-scroll").evaluate(node => node.scrollWidth > node.clientWidth));
+  await page.locator('tbody tr td:first-child').first().evaluate(node => { node.textContent = "FORNITORE MOLTO LUNGO ".repeat(15); });
+  await page.locator('tbody tr').first().evaluate(node => { const notes = document.createElement("p"); notes.className = "cte-row-notes"; notes.textContent = "Note lunghe\n" + "Condizioni contrattuali estese ".repeat(25); node.children[node.children.length - 2].append(notes); });
+  for (const width of [1280, 768, 375, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert.ok(await page.locator(".cte-archive-scroll").evaluate(node => node.scrollWidth <= node.clientWidth + 1), `archive overflow at ${width}`);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `viewport overflow at ${width}`);
+  }
+  await page.locator('tbody tr').first().getByRole("button", { name: "Modifica", exact: true }).click();
+  assert.ok(await page.locator("dialog").evaluate(node => node.scrollWidth <= node.clientWidth + 1));
+  await page.getByRole("button", { name: "Annulla", exact: true }).click();
   await page.getByRole("button", { name: "Carica CTE", exact: true }).click();
   assert.ok(await page.getByText("Upload esistente", { exact: true }).isVisible());
   assert.deepEqual(errors, []);

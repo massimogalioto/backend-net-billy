@@ -92,9 +92,15 @@ export async function mountArchive(target, { request, connection, update }) {
     body.replaceChildren();
     for (const row of rows) {
       const tr = element("tr"); tr.dataset.offerId = row.id;
-      for (const value of [row.supplier, row.offer_name, row.customer_type, row.supply_type, row.tariff_type === "Fisso" ? "Fissa" : row.tariff_type, priceLabel(row), `${euro(row.monthly_fixed_cost)}/mese`, row.min_power_kw == null ? "\u2014" : `${decimal(row.min_power_kw)} kW`, row.max_power_kw == null ? "\u2014" : `${decimal(row.max_power_kw)} kW`, dateLabel(row.valid_until), dateLabel(row.created_at)]) tr.append(element("td", value ?? "—"));
+      const tariff = (row.tariff_type ?? "").toLowerCase();
+      tr.className = ["fisso", "fixed", "fissa"].includes(tariff) ? "cte-fixed" : ["variabile", "variable"].includes(tariff) ? "cte-variable" : "";
+      for (const value of [row.supplier, row.offer_name, row.customer_type, row.supply_type, ["fisso", "fissa", "fixed"].includes(tariff) ? "Fissa" : ["variabile", "variable"].includes(tariff) ? "Variabile" : row.tariff_type, priceLabel(row), `${euro(row.monthly_fixed_cost)}/mese`, row.min_power_kw == null ? "\u2014" : `${decimal(row.min_power_kw)} kW`, row.max_power_kw == null ? "\u2014" : `${decimal(row.max_power_kw)} kW`, dateLabel(row.valid_until), dateLabel(row.created_at)]) {
+        const td = element("td", value ?? "\u2014");
+        td.dataset.label = columns[tr.children.length][1];
+        tr.append(td);
+      }
       const cell = element("td"), details = element("details"); details.append(element("summary", row.notes ? "Note e dettagli" : "Dettagli"));
-      if (row.notes) details.append(element("p", row.notes));
+      if (row.notes) cell.append(element("p", row.notes, "cte-row-notes"));
       details.append(element("p", `Valida dal: ${dateLabel(row.valid_from)}\nCaricata: ${dateLabel(row.created_at)}\nFonte: ${row.source_cte ?? "—"}\nPDF: ${row.pdf_filename ?? "—"}\nPrezzo fisso: ${decimal(row.fixed_price_kwh)}\nSpread: ${decimal(row.spread_kwh)}`));
       cell.append(details); tr.append(cell);
       const actions = element("td");
@@ -111,7 +117,7 @@ export async function mountArchive(target, { request, connection, update }) {
   for (const input of [search, customer, supply, order]) input.addEventListener(input === search ? "input" : "change", draw);
   async function editOffer(row, trigger) {
     const dialog = element("dialog", null, "cte-edit-dialog"), form = element("form"), grid = element("div", null, "cte-edit-grid");
-    form.append(element("h2", "Modifica CTE"));
+    form.append(element("h2", "Modifica CTE"), element("p", `${row.supplier ?? ""} \u2014 ${row.offer_name ?? ""}`, "muted cte-edit-subtitle"));
     const fields = [["supplier", "Fornitore"], ["offer_name", "Nome offerta"], ["customer_type", "Tipologia cliente"], ["supply_type", "Fornitura"], ["tariff_type", "Tipo tariffa"], ["fixed_price_kwh", "Prezzo fisso"], ["spread_kwh", "Spread"], ["monthly_fixed_cost", "Quota fissa mensile"], ["min_power_kw", "Potenza minima"], ["max_power_kw", "Potenza massima"], ["valid_from", "Valida dal"], ["valid_until", "Valida fino a"], ["source_cte", "Fonte CTE"], ["notes", "Note"]];
     const inputs = new Map();
     for (const [field, label] of fields) {

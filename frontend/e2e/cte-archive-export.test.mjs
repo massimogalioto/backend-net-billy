@@ -33,6 +33,8 @@ try {
   await page.getByRole("link", { name: "Archivio CTE", exact: true }).click();
   await page.locator("tbody tr").first().waitFor();
   assert.equal(await page.locator("tbody tr").count(), 3);
+  assert.ok(await page.locator('.cte-fixed').evaluate(node => getComputedStyle(node).backgroundImage.includes('98, 220, 167')));
+  assert.ok(await page.locator('.cte-variable').first().evaluate(node => getComputedStyle(node).backgroundImage.includes('255, 173, 0')));
   const content = await page.locator("table").innerText();
   for (const value of ["0,149 €/kWh", "PSV + 0,1 €/Smc", "PUN + 0,015 €/kWh", "25 kW", "15 kW", "30 kW", "31/10/2026", "Non indicata"]) assert.ok(content.includes(value), value);
   assert.equal(await page.locator("table img").count(), 0);
@@ -77,7 +79,27 @@ try {
   await page.waitForFunction(() => !document.querySelector("dialog"));
   assert.equal(await page.locator('tr[data-offer-id="a"]').count(), 0);
   await page.setViewportSize({ width: 375, height: 800 });
-  assert.ok(await page.locator(".cte-archive-scroll").evaluate(node => node.scrollWidth > node.clientWidth));
+  await page.locator('tbody tr td:first-child').first().evaluate(node => { node.textContent = "FORNITORE MOLTO LUNGO ".repeat(15); });
+  await page.locator('tbody tr').first().evaluate(node => { const notes = document.createElement("p"); notes.className = "cte-row-notes"; notes.textContent = "Note lunghe\n" + "Condizioni contrattuali estese ".repeat(25); node.children[node.children.length - 2].append(notes); });
+  for (const width of [1280, 768, 375, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert.ok(await page.locator(".cte-archive-scroll").evaluate(node => node.scrollWidth <= node.clientWidth + 1), `archive overflow at ${width}`);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `viewport overflow at ${width}`);
+  }
+  await page.locator('tbody tr').first().getByRole("button", { name: "Modifica", exact: true }).click();
+  assert.ok(await page.locator("dialog").evaluate(node => node.scrollWidth <= node.clientWidth + 1));
+  await page.getByRole("button", { name: "Annulla", exact: true }).click();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.screenshot({ path: "e2e/cte-archive-desktop.png", fullPage: true });
+  await page.locator('tbody tr').first().getByRole("button", { name: "Modifica", exact: true }).click();
+  assert.equal(await page.locator("dialog").evaluate(node => getComputedStyle(node).backgroundColor), "rgb(18, 28, 34)");
+  assert.equal(await page.locator("dialog label").first().evaluate(node => getComputedStyle(node).color), "rgb(245, 246, 247)");
+  assert.equal(await page.locator("dialog input").first().evaluate(node => getComputedStyle(node).backgroundColor), "rgb(9, 17, 22)");
+  await page.screenshot({ path: "e2e/cte-archive-modal.png", fullPage: true });
+  await page.setViewportSize({ width: 375, height: 900 });
+  await page.screenshot({ path: "e2e/cte-archive-mobile.png", fullPage: true });
+  await page.getByRole("button", { name: "Annulla", exact: true }).click();
+  await page.screenshot({ path: "e2e/cte-archive-mobile.png", fullPage: true });
   await page.reload(); await page.locator("tbody tr").first().waitFor();
   await page.getByRole("navigation", { name: "Area CTE" }).getByRole("link", { name: "Carica CTE", exact: true }).click();
   await page.getByRole("link", { name: "Archivio CTE", exact: true }).waitFor();
