@@ -2,7 +2,7 @@ export type Offerta = {
   fornitore: string; nome_offerta: string; tipologia_cliente: string; tariffa: string;
   prezzo_kwh: number | null; spread: number | null; costo_fisso: number | null;
   min_power_kw?: number | null; max_power_kw?: number | null;
-  validita: string | null; valid_until?: string | null; fonte_cte: string | null; vincoli: string | null; tipo_fornitura: string;
+  validita: string | null; valid_until?: string | null; fonte_cte: string | null; vincoli: string | null; notes?: string | null; tipo_fornitura: string;
 };
 export type Bolletta = {
   cliente?: string; indirizzo?: string; pod?: string; kwh_totali: number;
@@ -12,7 +12,7 @@ export type Bolletta = {
 export type Confronto = {
   id?: string; fornitore: string; nome_offerta: string; tariffa: string;
   prezzo_kwh: number; costo_fisso: number; totale_simulato: number;
-  prezzo_effettivo_pagato: number; differenza_mensile: number; risparmio_annuo: number; tipo_differenza: string; percentuale: number;
+  prezzo_effettivo_pagato: number; differenza_mensile: number; risparmio_annuo: number; tipo_differenza: string; percentuale: number; notes?: string | null;
   cte?: { filename: string; url: string } | null;
 };
 export type BillResult = { bolletta: Bolletta; offerte: Confronto[] };

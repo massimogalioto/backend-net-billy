@@ -6,7 +6,7 @@ import CaricamentoMassivoCTE from "@/CaricamentoMassivoCTE";
 import { service, errorMessage } from "@/lib/api";
 import type { Offerta } from "@/lib/types";
 
-const empty: Offerta = { fornitore: "", nome_offerta: "", tipologia_cliente: "", tariffa: "", prezzo_kwh: null, spread: null, costo_fisso: null, validita: null, fonte_cte: "", vincoli: "", tipo_fornitura: "" };
+const empty: Offerta = { fornitore: "", nome_offerta: "", tipologia_cliente: "", tariffa: "", prezzo_kwh: null, spread: null, costo_fisso: null, validita: null, fonte_cte: "", vincoli: "", notes: "", tipo_fornitura: "" };
 const numeric = new Set(["prezzo_kwh", "spread", "costo_fisso"]);
 const fields: { key: keyof Offerta; label: string; required?: boolean; type?: string; options?: string[] }[] = [
   { key: "fornitore", label: "Fornitore", required: true }, { key: "nome_offerta", label: "Nome offerta", required: true },
@@ -14,6 +14,7 @@ const fields: { key: keyof Offerta; label: string; required?: boolean; type?: st
   { key: "tariffa", label: "Tipo tariffa", required: true, options: ["Fisso", "Variabile"] }, { key: "validita", label: "Data di validità", type: "date" },
   { key: "prezzo_kwh", label: "Prezzo fisso (€/kWh o €/Smc)", type: "number" }, { key: "spread", label: "Spread (€/kWh o €/Smc)", type: "number" },
   { key: "costo_fisso", label: "Costo fisso mensile (€)", type: "number" }, { key: "fonte_cte", label: "Fonte CTE" }, { key: "vincoli", label: "Note e vincoli" },
+  { key: "notes", label: "Dettagli contrattuali", type: "textarea" },
 ];
 
 export default function CteWorkspace() {
@@ -73,8 +74,9 @@ export default function CteWorkspace() {
       </section>
       <section className="panel result-panel"><span className="panel-number">PASSO 02</span><h2>Verifica e salva</h2><p className="muted">Controlla le condizioni estratte prima del salvataggio.</p>
         {!offerta ? <div className="empty-state">{busy === "extract" ? <LoaderCircle size={42} className="spin" /> : <FileCheck2 size={42} />}<h3>{busy === "extract" ? "Stiamo leggendo la tua CTE" : "Qui prenderà forma la tua offerta"}</h3><p>{busy === "extract" ? "L’analisi può richiedere qualche minuto. Mantieni aperta la pagina." : "Carica un PDF per visualizzare fornitore, prezzi e condizioni."}</p><div className="empty-lines"><i /><i /><i /></div></div>
-          : <form onSubmit={save}><fieldset disabled={!!busy || !!saved} className="offerta-fields"><div className="form-grid">{fields.map(field => <label key={field.key} className={field.key === "vincoli" ? "span-two" : ""}>{field.label}{field.required && <span className="required"> *</span>}
+          : <form onSubmit={save}><fieldset disabled={!!busy || !!saved} className="offerta-fields"><div className="form-grid">{fields.map(field => <label key={field.key} className={field.key === "vincoli" || field.key === "notes" ? "span-two" : ""}>{field.label}{field.required && <span className="required"> *</span>}
             {field.options ? <select value={offerta[field.key] ?? ""} required={field.required} onChange={event => setOfferta({ ...offerta, [field.key]: event.target.value })}><option value="">Seleziona…</option>{field.options.map(option => <option key={option}>{option}</option>)}</select>
+              : field.type === "textarea" ? <textarea rows={4} value={offerta[field.key] ?? ""} onChange={event => setOfferta({ ...offerta, [field.key]: event.target.value || null })} />
               : <input type={field.type ?? "text"} required={field.required} min={field.type === "number" ? "0" : undefined} step={field.type === "number" ? "any" : undefined} value={offerta[field.key] ?? ""} onChange={event => setOfferta({ ...offerta, [field.key]: numeric.has(field.key) ? (event.target.value === "" ? null : Number(event.target.value)) : (event.target.value || null) })} />}
           </label>)}</div></fieldset>
           <p className="form-note">* Campi obbligatori. Inserisci manualmente la fonte della CTE.</p>

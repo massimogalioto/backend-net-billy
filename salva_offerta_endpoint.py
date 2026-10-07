@@ -27,6 +27,7 @@ class OffertaInput(BaseModel):
     valid_until: str | None = None
     fonte_cte: str | None = None
     vincoli: str | None = None
+    notes: str | None = None
     tipo_fornitura: str
     min_power_kw: float | None = Field(default=None, ge=0)
     max_power_kw: float | None = Field(default=None, ge=0)

@@ -148,7 +148,7 @@ def insert_offer(dati: dict[str, Any], pdf_metadata: dict[str, Any] | None = Non
              dati.get("tipologia_cliente"), dati.get("tipo_fornitura"), dati.get("tariffa"),
              dati.get("prezzo_kwh"), dati.get("spread"), dati.get("costo_fisso"), valid_from,
              dati.get("valid_until") or None,
-             dati.get("fonte_cte"), dati.get("vincoli"), dati.get("min_power_kw"),
+             dati.get("fonte_cte"), dati.get("notes") or dati.get("vincoli"), dati.get("min_power_kw"),
              dati.get("max_power_kw"), metadata.get("object_key"),
              metadata.get("filename"), metadata.get("content_type"), metadata.get("size_bytes")),
         )

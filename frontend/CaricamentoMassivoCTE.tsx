@@ -57,6 +57,7 @@ export default function CaricamentoMassivoCTE({ baseUrl = "/api/service", onRunn
     } finally { setManualBusy(false); }
   }
   const correctionFields: { key: string; label: string; options?: string[]; type?: string }[] = [
+    { key: "notes", label: "Dettagli contrattuali", type: "textarea" },
     { key: "fornitore", label: "Fornitore" }, { key: "nome_offerta", label: "Nome offerta" },
     { key: "tipologia_cliente", label: "Tipologia cliente", options: ["Residenziale", "Business"] },
     { key: "tipo_fornitura", label: "Fornitura", options: ["Luce", "Gas"] }, { key: "tariffa", label: "Tipo tariffa", options: ["Fisso", "Variabile"] },

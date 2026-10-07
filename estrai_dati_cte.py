@@ -3,6 +3,7 @@ import json
 import re
 from dotenv import load_dotenv
 from openai import OpenAI
+from cte_notes import format_cte_notes
 
 load_dotenv()
 
@@ -36,7 +37,10 @@ def estrai_dati_offerta_cte(testo: str) -> dict:
             "- vincoli (es. 'Durata minima 12 mesi') o null\n"
             "- tipo_fornitura: restituisci esclusivamente 'Luce', 'Gas' oppure null se non determinabile. Usa tutto il contenuto della CTE: Luce se trovi energia elettrica, POD, kWh, €/kWh, PUN, potenza impegnata/disponibile; Gas se trovi gas naturale, PDR, Smc, €/Smc o PSV. Non inventare il valore se ambiguo.\n"
             "- min_power_kw (numero decimale o null: limite minimo esplicito di potenza impegnata, contrattuale o disponibile, normalizzato in kW)\n"
-            "- max_power_kw (numero decimale o null: limite massimo esplicito di potenza impegnata, contrattuale o disponibile, normalizzato in kW)\n\n"
+            "- max_power_kw (numero decimale o null: limite massimo esplicito di potenza impegnata, contrattuale o disponibile, normalizzato in kW)\n"
+            "- fatturazione: restituisci solo 'Mensile', 'Bimestrale' oppure 'Non indicata'. Cerca in tutto il documento espressioni quali fatturazione mensile/bimestrale, fattura ogni mese/due mesi, ciclo o periodicità di fatturazione, emissione mensile/bimestrale. Non dedurre nulla se non è esplicito o ragionevolmente indicato.\n"
+            "- recesso_anticipato: riporta in modo conciso solo la clausola esplicitamente trovata; se il documento dichiara assenza di penali usa esattamente 'Nessuna penale rilevata'; se non trovi una clausola usa esattamente 'Non indicato'. Cerca anche costo/corrispettivo/onere di recesso, indennizzo, risoluzione anticipata, durata o permanenza minima, recupero sconti o bonus e restituzione di vantaggi economici. Non inventare durata, importi, formule o condizioni.\n"
+            "- altre_note: eventuali altre note contrattuali utili, oppure null. Non ripetere qui fatturazione o recesso.\n\n"
             "Cerca condizioni come 'da 25 kW in su', 'fino a 15 kW' o 'da 10 kW a 30 kW'. Se non esiste un limite chiaramente dichiarato, restituisci entrambi null. Non inventare limiti.\n\n"
             "Rispondi solo con JSON valido, senza commenti o testo extra. Ecco il testo da analizzare:\n\n"
             "Testo da analizzare:\n"
@@ -50,7 +54,7 @@ def estrai_dati_offerta_cte(testo: str) -> dict:
                 {"role": "user", "content": prompt}
             ],
             temperature=0.2,
-            max_tokens=600
+            max_tokens=700
         )
 
         content = response.choices[0].message.content
@@ -61,6 +65,10 @@ def estrai_dati_offerta_cte(testo: str) -> dict:
         dati = json.loads(json_text)
         dati["min_power_kw"] = _normalize_optional_power_kw(dati.get("min_power_kw"))
         dati["max_power_kw"] = _normalize_optional_power_kw(dati.get("max_power_kw"))
+        dati["notes"] = format_cte_notes(
+            dati.get("fatturazione"), dati.get("recesso_anticipato"),
+            dati.get("altre_note"), dati.get("vincoli"),
+        )
         return dati
 
     except Exception as e:
