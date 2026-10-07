@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Header
-from pydantic import BaseModel, Field, ValidationError, validator
+from pydantic import BaseModel, Field, ValidationError, root_validator, validator
 from database_service import ConfigurationError, find_duplicate_cte_offer, insert_offer
 from fastapi.responses import JSONResponse
 from storage_service import delete_pdf, upload_cte_pdf
@@ -24,6 +24,7 @@ class OffertaInput(BaseModel):
     spread: float | None = None
     costo_fisso: float | None = None
     validita: str | None = None
+    valid_from: str | None = None
     valid_until: str | None = None
     fonte_cte: str | None = None
     vincoli: str | None = None
@@ -33,6 +34,15 @@ class OffertaInput(BaseModel):
     max_power_kw: float | None = Field(default=None, ge=0)
     cte_pdf: CtePdfInput | None = None
     cte_retry_token: str | None = Field(default=None, max_length=200)
+
+    @root_validator(pre=True)
+    def generic_validity_is_expiry(cls, values):
+        values = dict(values)
+        legacy_validity = values.get("validita")
+        if legacy_validity and not values.get("valid_from") and not values.get("valid_until"):
+            values["valid_until"] = legacy_validity
+            values["validita"] = None
+        return values
 
     @validator("tipo_fornitura", pre=True)
     def normalize_supply_type(cls, value):

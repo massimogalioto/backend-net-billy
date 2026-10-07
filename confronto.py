@@ -73,6 +73,8 @@ def confronta_offerte(bolletta):
             "tipo_differenza": tipo_diff,
             "percentuale": round(percentuale, 2),
             "notes": fields.get("Note"),
+            "valid_from": fields.get("valid_from"),
+            "valid_until": fields.get("valid_until"),
             # The URL is internal to this API; credentials and object keys never reach clients.
             "cte": ({"filename": fields.get("pdf_filename"), "url": f"https://backend-net-billy-production.up.railway.app/cte-offers/{offerta['id']}/pdf"}
                     if fields.get("has_pdf") else None)

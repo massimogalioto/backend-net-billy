@@ -6,6 +6,11 @@ import { service, errorMessage, euro, number } from "@/lib/api";
 import { readConnection } from "@/lib/connection";
 import type { BillResult } from "@/lib/types";
 
+function italianDate(value: string | null | undefined): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value ?? "");
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : null;
+}
+
 export default function BillWorkspace() {
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -70,6 +75,7 @@ export default function BillWorkspace() {
           <span className="supplier">{offer.fornitore}</span><h4>{offer.nome_offerta}</h4><span className="tiny-label">{extraCost ? "MAGGIOR COSTO ANNUO STIMATO" : "RISPARMIO ANNUO STIMATO"}</span><div className={`offer-price ${saving ? "positive" : extraCost ? "negative" : ""}`}>{extraCost ? "+ " : ""}{euro(Math.abs(offer.risparmio_annuo))}<small>/anno</small></div>
           <div className={`saving-row ${saving ? "positive" : extraCost ? "negative" : ""}`}>{extraCost ? <ArrowUpRight size={18} /> : <ArrowDownRight size={18} />}<span>{saving ? "Risparmio mensile" : extraCost ? "Maggior costo mensile" : "Nessuna differenza"}{(saving || extraCost) && <> di <strong>{euro(Math.abs(offer.differenza_mensile))}</strong></>}</span></div>
           <dl className="offer-details"><div><dt>Tipo tariffa</dt><dd>{offer.tariffa}</dd></div><div><dt>Prezzo energia</dt><dd>{new Intl.NumberFormat("it-IT", { maximumFractionDigits: 4 }).format(offer.prezzo_kwh)} €/{unit}</dd></div><div><dt>Costo fisso</dt><dd>{euro(offer.costo_fisso)}/mese</dd></div><div><dt>Differenza percentuale</dt><dd>{saving ? "−" : offer.differenza_mensile > 0 ? "+" : ""}{number(Math.abs(offer.percentuale))}%</dd></div></dl>
+          {italianDate(offer.valid_until) && <p className="offer-valid-until">Valida fino a: <strong>{italianDate(offer.valid_until)}</strong></p>}
           {offer.notes && <section className="contract-details"><span className="tiny-label">DETTAGLI CONTRATTUALI</span><p>{offer.notes}</p></section>}
           {offer.cte && <button className="button outline full" onClick={() => void openCte(offer.cte!.url)}><FileText size={16} /> Visualizza CTE</button>}
         </article>;

@@ -4,6 +4,7 @@ import re
 from dotenv import load_dotenv
 from openai import OpenAI
 from cte_notes import format_cte_notes
+from cte_validity import normalize_cte_validity
 
 load_dotenv()
 
@@ -33,7 +34,8 @@ def estrai_dati_offerta_cte(testo: str) -> dict:
             "- prezzo_kwh (considera il prezzo della materia energia sia essa energia elettica o gas solo se tariffa Fisso, es. 0.145) oppure 0\n"
             "- spread (considera il prezzo della materia energia sia essa energia elettrica o gas solo se tariffa Variabile, potresti trovarlo scritto anche come contributo al consumo o parametro alfa es. 0.0135) oppure 0\n"
             "- costo_fisso (potresti trovarlo scritto anche come  commercializzazione o CCV, se l'importo è maggiore di 30 euro dividilo per 12 e mostra il risultato)\n"
-            "- validita (data in formato 'YYYY-MM-DD', oppure se non disponibile aggiungi 3 mesi alla data di caricamento)\n"
+            "- valid_from: data in formato 'YYYY-MM-DD' solo se il documento indica esplicitamente l'inizio della validità commerciale, ad esempio 'condizioni valide dal 01/10/2026 al 31/10/2026'. Non usare date di documento, emissione, caricamento, decorrenza del cliente o date odierne. Se non è presente un vero inizio, restituisci null.\n"
+            "- valid_until: data in formato 'YYYY-MM-DD' per scadenza dell'offerta, 'valida fino al', 'sottoscrivibile entro/fino al', condizioni economiche valide fino al, fine validità commerciale, disponibilità fino al o scadenza. Se esiste una sola data associata genericamente a validità/scadenza dell'offerta, assegnala qui e lascia valid_from null. Non inventare date e non aggiungere mesi alla data di caricamento.\n"
             "- vincoli (es. 'Durata minima 12 mesi') o null\n"
             "- tipo_fornitura: restituisci esclusivamente 'Luce', 'Gas' oppure null se non determinabile. Usa tutto il contenuto della CTE: Luce se trovi energia elettrica, POD, kWh, €/kWh, PUN, potenza impegnata/disponibile; Gas se trovi gas naturale, PDR, Smc, €/Smc o PSV. Non inventare il valore se ambiguo.\n"
             "- min_power_kw (numero decimale o null: limite minimo esplicito di potenza impegnata, contrattuale o disponibile, normalizzato in kW)\n"
@@ -62,7 +64,7 @@ def estrai_dati_offerta_cte(testo: str) -> dict:
         # Rimuove eventuali blocchi markdown tipo ```json
         json_text = re.sub(r"```json|```", "", content).strip()
 
-        dati = json.loads(json_text)
+        dati = normalize_cte_validity(json.loads(json_text))
         dati["min_power_kw"] = _normalize_optional_power_kw(dati.get("min_power_kw"))
         dati["max_power_kw"] = _normalize_optional_power_kw(dati.get("max_power_kw"))
         dati["notes"] = format_cte_notes(

@@ -60,7 +60,8 @@ def _offer_fields(row: dict[str, Any]) -> dict[str, Any]:
         "Prezzo fisso €/kWh": _normalize_numeric(row["fixed_price_kwh"]),
         "Spread €/kWh": _normalize_numeric(row["spread_kwh"]),
         "Costo fisso mensile": _normalize_numeric(row["monthly_fixed_cost"]) or 0,
-        "Data validità": row["valid_from"],
+        "valid_from": row["valid_from"],
+        "valid_until": row["valid_until"],
         "Fonte CTE": row["source_cte"],
         "Note": row["notes"],
         "min_power_kw": _normalize_numeric(row.get("min_power_kw")),
@@ -135,7 +136,7 @@ def find_duplicate_cte_offer(dati: dict[str, Any]) -> str | None:
 def insert_offer(dati: dict[str, Any], pdf_metadata: dict[str, Any] | None = None) -> str:
     tenant_id = default_tenant_id()
     metadata = pdf_metadata or {}
-    valid_from = dati.get("validita") or None
+    valid_from = dati.get("valid_from") or None
     with _connection() as conn, conn.cursor() as cur:
         cur.execute(
             """INSERT INTO cte_offers

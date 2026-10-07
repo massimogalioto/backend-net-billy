@@ -82,6 +82,11 @@ class EconomicsTests(unittest.TestCase):
         result = self.compare(offers=[variable], disp=0.02)[0]
         self.assertAlmostEqual(result["totale_simulato"], 42.98, places=2)
 
+    def test_comparison_exposes_offer_expiry_without_changing_economics(self):
+        expiring = offer("Expiry", 0.149, 12)
+        expiring["fields"]["valid_until"] = "2026-10-31"
+        self.assertEqual(self.compare(offers=[expiring])[0]["valid_until"], "2026-10-31")
+
 
 if __name__ == "__main__":
     unittest.main()

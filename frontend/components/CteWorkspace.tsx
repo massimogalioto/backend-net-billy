@@ -6,12 +6,12 @@ import CaricamentoMassivoCTE from "@/CaricamentoMassivoCTE";
 import { service, errorMessage } from "@/lib/api";
 import type { Offerta } from "@/lib/types";
 
-const empty: Offerta = { fornitore: "", nome_offerta: "", tipologia_cliente: "", tariffa: "", prezzo_kwh: null, spread: null, costo_fisso: null, validita: null, fonte_cte: "", vincoli: "", notes: "", tipo_fornitura: "" };
+const empty: Offerta = { fornitore: "", nome_offerta: "", tipologia_cliente: "", tariffa: "", prezzo_kwh: null, spread: null, costo_fisso: null, valid_from: null, valid_until: null, fonte_cte: "", vincoli: "", notes: "", tipo_fornitura: "" };
 const numeric = new Set(["prezzo_kwh", "spread", "costo_fisso"]);
 const fields: { key: keyof Offerta; label: string; required?: boolean; type?: string; options?: string[] }[] = [
   { key: "fornitore", label: "Fornitore", required: true }, { key: "nome_offerta", label: "Nome offerta", required: true },
   { key: "tipo_fornitura", label: "Fornitura", required: true, options: ["Luce", "Gas"] }, { key: "tipologia_cliente", label: "Tipologia cliente", required: true, options: ["Residenziale", "Business"] },
-  { key: "tariffa", label: "Tipo tariffa", required: true, options: ["Fisso", "Variabile"] }, { key: "validita", label: "Data di validità", type: "date" },
+  { key: "tariffa", label: "Tipo tariffa", required: true, options: ["Fisso", "Variabile"] }, { key: "valid_from", label: "Inizio validità (se indicato)", type: "date" }, { key: "valid_until", label: "Valida fino a", type: "date" },
   { key: "prezzo_kwh", label: "Prezzo fisso (€/kWh o €/Smc)", type: "number" }, { key: "spread", label: "Spread (€/kWh o €/Smc)", type: "number" },
   { key: "costo_fisso", label: "Costo fisso mensile (€)", type: "number" }, { key: "fonte_cte", label: "Fonte CTE" }, { key: "vincoli", label: "Note e vincoli" },
   { key: "notes", label: "Dettagli contrattuali", type: "textarea" },
@@ -41,7 +41,7 @@ export default function CteWorkspace() {
         if (value != null) Object.assign(extracted, { [field.key]: numeric.has(field.key) ? (Number.isFinite(Number(value)) ? Number(value) : null) : String(value) });
       }
       extracted.fonte_cte = "";
-      if (extracted.validita && !/^\d{4}-\d{2}-\d{2}$/.test(extracted.validita)) extracted.validita = null;
+      for (const field of ["valid_from", "valid_until"] as const) if (extracted[field] && !/^\d{4}-\d{2}-\d{2}$/.test(extracted[field])) extracted[field] = null;
       setOfferta(extracted);
     } catch (err) { setError(errorMessage(err)); }
     finally { lock.current = false; setBusy(null); }
