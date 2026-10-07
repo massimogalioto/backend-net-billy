@@ -13,6 +13,7 @@ import os
 from database_service import ConfigurationError, get_offer_pdf
 from storage_service import get_pdf
 from market_prices_endpoint import router as market_prices_router
+from cte_archive_endpoint import router as cte_archive_router
 
 app = FastAPI(
     title="Servizio confronto bollette",
@@ -36,6 +37,7 @@ app.include_router(salva_offerta_router)
 app.include_router(analizza_bolletta_router)
 app.include_router(estrai_testo_pdf_router)
 app.include_router(market_prices_router)
+app.include_router(cte_archive_router)
 
 @app.get("/cte-offers/{offer_id}/pdf")
 def cte_pdf(offer_id: str):

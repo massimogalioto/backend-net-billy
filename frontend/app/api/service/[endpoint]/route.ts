@@ -7,7 +7,7 @@ const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 export async function GET(request: NextRequest, context: { params: Promise<{ endpoint: string }> }) {
   const { endpoint } = await context.params;
-  if (endpoint !== "market-prices-psv") return NextResponse.json({ detail: "Endpoint non disponibile" }, { status: 404 });
+  if (!["market-prices-psv", "cte-offers"].includes(endpoint)) return NextResponse.json({ detail: "Endpoint non disponibile" }, { status: 404 });
   if (!process.env.BACKEND_URL) return NextResponse.json({ detail: "Collegamento al servizio non configurato" }, { status: 503 });
   try {
     const headers = new Headers();
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ end
     const response = await fetch(`${process.env.BACKEND_URL.replace(/\/$/, "")}/${endpoint}`, { headers, cache: "no-store", signal: AbortSignal.timeout(30_000) });
     return NextResponse.json(await response.json(), { status: response.status, headers: { "Cache-Control": "no-store" } });
   } catch {
-    return NextResponse.json({ detail: "Prezzi PSV non raggiungibili" }, { status: 502 });
+    return NextResponse.json({ detail: endpoint === "cte-offers" ? "Archivio CTE non raggiungibile" : "Prezzi PSV non raggiungibili" }, { status: 502 });
   }
 }
 

@@ -103,6 +103,29 @@ def get_offerte(tipo_fornitura: str, tipologia_cliente: str,
         return [{"id": str(row["id"]), "fields": _offer_fields(row)} for row in cur.fetchall()]
 
 
+def list_cte_offers(customer_type: str | None = None, supply_type: str | None = None,
+                    active_only: bool = True) -> list[dict[str, Any]]:
+    """Commercial archive fields only; tenant always resolved by the backend."""
+    with _connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """SELECT id, supplier, offer_name, customer_type, supply_type, tariff_type,
+                      fixed_price_kwh, spread_kwh, monthly_fixed_cost,
+                      min_power_kw, max_power_kw, valid_from, valid_until,
+                      notes, source_cte, pdf_filename, created_at,
+                      (pdf_object_key IS NOT NULL AND pdf_object_key <> '') AS has_pdf
+               FROM cte_offers
+               WHERE tenant_id = %s
+                 AND (%s = FALSE OR valid_until IS NULL OR valid_until >= CURRENT_DATE)
+                 AND (%s::text IS NULL OR customer_type = %s)
+                 AND (%s::text IS NULL OR supply_type = %s)
+               ORDER BY customer_type, supplier, offer_name, id""",
+            (default_tenant_id(), active_only, customer_type, customer_type,
+             supply_type, supply_type),
+        )
+        return [{**{key: _normalize_numeric(value) for key, value in row.items()},
+                 "id": str(row["id"])} for row in cur.fetchall()]
+
+
 def find_duplicate_cte_offer(dati: dict[str, Any]) -> str | None:
     # TODO: enforce duplicate protection at database level after the
     # duplicate fingerprint has been validated in production.
