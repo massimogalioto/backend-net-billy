@@ -9,14 +9,15 @@ export function authUrl(path: string) { return directConnection ? `${readConnect
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname(); const router = useRouter();
   // Static export uses trailingSlash, so the browser path is /login/ on Netlify.
-  const isLoginPage = pathname.replace(/\/+$/, "") === "/login";
-  const [ready, setReady] = useState(isLoginPage);
+  const normalizedPath = pathname.replace(/\/+$/, "");
+  const isPublicAuthPage = normalizedPath === "/login" || normalizedPath === "/register";
+  const [ready, setReady] = useState(isPublicAuthPage);
   useEffect(() => {
-    if (isLoginPage) { setReady(true); return; }
+    if (isPublicAuthPage) { setReady(true); return; }
     fetch(authUrl("/auth/me"), { credentials: "include" }).then(response => {
       if (!response.ok) router.replace("/login"); else setReady(true);
     }).catch(() => router.replace("/login"));
-  }, [isLoginPage, router]);
+  }, [isPublicAuthPage, router]);
   if (!ready) return <main className="shell workspace"><p className="muted">Verifica sessione in corso…</p></main>;
   return <>{children}</>;
 }

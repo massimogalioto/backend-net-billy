@@ -32,6 +32,23 @@ class AuthEndpointTests(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.json()["detail"], "Email o password non validi")
 
+    def test_register_returns_free_user_and_sets_session_cookie(self):
+        free_user = CurrentUser("user-free", "new@example.com", "Mario", "tenant-free", "Nuova attività", "FREE", "Free")
+        with patch.object(auth_endpoint, "register", return_value=(free_user, "opaque-registration-token")):
+            response = self.client.post("/auth/register", json={"company_name": "Nuova attività", "name": "Mario", "email": "NEW@EXAMPLE.COM", "password": "password-lunga"})
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["plan"]["code"], "FREE")
+        self.assertIn("HttpOnly", response.headers["set-cookie"])
+        self.assertNotIn("opaque-registration-token", response.text)
+
+    def test_register_rejects_short_password_and_duplicate_email(self):
+        short = self.client.post("/auth/register", json={"company_name": "Nuova", "name": "Mario", "email": "new@example.com", "password": "corta"})
+        self.assertEqual(short.status_code, 422)
+        with patch.object(auth_endpoint, "register", side_effect=HTTPException(409, "Email già registrata")):
+            duplicate = self.client.post("/auth/register", json={"company_name": "Nuova", "name": "Mario", "email": "new@example.com", "password": "password-lunga"})
+        self.assertEqual(duplicate.status_code, 409)
+        self.assertEqual(duplicate.json()["detail"], "Email già registrata")
+
     def test_me_requires_authenticated_user_and_never_returns_hash(self):
         self.assertEqual(self.client.get("/auth/me").status_code, 401)
         self.app.dependency_overrides[auth_endpoint.current_user] = lambda: USER

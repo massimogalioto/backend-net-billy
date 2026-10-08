@@ -2,28 +2,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.resetModules(); });
 describe("collegamento statico", () => {
-  it("indirizza upload e salvataggio al backend con la chiave di sessione", async () => {
+  it("indirizza upload e salvataggio al backend con cookie di sessione", async () => {
     vi.stubEnv("NEXT_PUBLIC_STATIC_MODE", "true");
-    vi.stubGlobal("window", {});
-    vi.stubGlobal("sessionStorage", { getItem: () => JSON.stringify({ url: "https://backend.example/", key: "secret-test" }) });
+    vi.stubEnv("NEXT_PUBLIC_BACKEND_URL", "https://backend.example/");
     const { connectionRequest } = await import("./connection");
     for (const endpoint of ["upload-cte", "salva-offerta", "salva-offerta-manuale", "upload-bolletta", "confronta"]) {
       const [url, init] = connectionRequest(`/api/service/${endpoint}`, { method: "POST" });
       expect(url).toBe(`https://backend.example/${endpoint}`);
-      expect(new Headers(init.headers).get("x-api-key")).toBe("secret-test");
+      expect(new Headers(init.headers).get("x-api-key")).toBeNull();
+      expect(init.credentials).toBe("include");
     }
   });
   it("mantiene il proxy quando si usa il server Next.js", async () => {
     vi.stubEnv("NEXT_PUBLIC_STATIC_MODE", "false");
     const { connectionRequest } = await import("./connection");
     expect(connectionRequest("/api/service/upload-cte", { method: "POST" })[0]).toBe("/api/service/upload-cte");
-  });
-  it("spiega la configurazione mancante", async () => {
-    vi.stubEnv("NEXT_PUBLIC_STATIC_MODE", "true");
-    vi.stubEnv("NEXT_PUBLIC_BACKEND_URL", "");
-    vi.stubGlobal("window", {});
-    vi.stubGlobal("sessionStorage", { getItem: () => null });
-    const { connectionRequest } = await import("./connection");
-    expect(() => connectionRequest("/api/service/upload-cte", {})).toThrow("Configura prima");
   });
 });
