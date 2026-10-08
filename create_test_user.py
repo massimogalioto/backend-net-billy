@@ -36,12 +36,14 @@ def main():
             cur.execute("UPDATE users SET tenant_id=%s, first_name=%s, last_name=%s, password_hash=%s, is_active=TRUE WHERE id=%s", (tenant_id, args.first_name, args.last_name, password_hash, user["id"]))
         else:
             cur.execute("INSERT INTO users (tenant_id, first_name, last_name, email, password_hash) VALUES (%s, %s, %s, %s, %s)", (tenant_id, args.first_name, args.last_name, args.email.lower(), password_hash))
-        cur.execute("SELECT id FROM subscriptions WHERE tenant_id=%s AND status IN ('active','trial','demo') LIMIT 1", (tenant_id,))
+        # The existing Railway schema accepts ``active``; do not assume a custom
+        # ``demo`` status exists in its CHECK constraint.
+        cur.execute("SELECT id FROM subscriptions WHERE tenant_id=%s AND status IN ('active','trial') LIMIT 1", (tenant_id,))
         subscription = cur.fetchone()
         if subscription:
-            cur.execute("UPDATE subscriptions SET plan_id=%s, status='demo', updated_at=NOW() WHERE id=%s", (plan["id"], subscription["id"]))
+            cur.execute("UPDATE subscriptions SET plan_id=%s, status='active', updated_at=NOW() WHERE id=%s", (plan["id"], subscription["id"]))
         else:
-            cur.execute("INSERT INTO subscriptions (tenant_id, plan_id, status, created_at) VALUES (%s, %s, 'demo', NOW())", (tenant_id, plan["id"]))
+            cur.execute("INSERT INTO subscriptions (tenant_id, plan_id, status, created_at) VALUES (%s, %s, 'active', NOW())", (tenant_id, plan["id"]))
     print(f"Utente demo creato/aggiornato: {args.email} (tenant {args.tenant_name}, piano {args.plan})")
 
 

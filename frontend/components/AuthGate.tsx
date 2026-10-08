@@ -7,13 +7,16 @@ export type SessionUser = { name: string; email: string; tenant: { name: string 
 export function authUrl(path: string) { return directConnection ? `${readConnection().url}${path}` : path; }
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname(); const router = useRouter(); const [ready, setReady] = useState(pathname === "/login");
+  const pathname = usePathname(); const router = useRouter();
+  // Static export uses trailingSlash, so the browser path is /login/ on Netlify.
+  const isLoginPage = pathname.replace(/\/+$/, "") === "/login";
+  const [ready, setReady] = useState(isLoginPage);
   useEffect(() => {
-    if (pathname === "/login") { setReady(true); return; }
+    if (isLoginPage) { setReady(true); return; }
     fetch(authUrl("/auth/me"), { credentials: "include" }).then(response => {
       if (!response.ok) router.replace("/login"); else setReady(true);
     }).catch(() => router.replace("/login"));
-  }, [pathname, router]);
+  }, [isLoginPage, router]);
   if (!ready) return <main className="shell workspace"><p className="muted">Verifica sessione in corso…</p></main>;
   return <>{children}</>;
 }

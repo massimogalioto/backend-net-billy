@@ -25,4 +25,6 @@ if (!existsSync(resolve(stage, "out/index.html"))) throw new Error("Static expor
 rmSync(output, { recursive: true, force: true });
 cpSync(resolve(stage, "out"), output, { recursive: true });
 writeFileSync(resolve(output, "_headers"), "/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n");
+const verification = spawnSync(process.execPath, [resolve(root, "scripts/verify-static-assets.mjs"), output], { stdio: "inherit" });
+if (verification.status !== 0) process.exit(verification.status ?? 1);
 console.log(`Cartella pronta per Netlify: ${output}`);
