@@ -50,7 +50,7 @@ def estrai_dati_offerta_cte(testo: str) -> dict:
         )
 
         response = client.chat.completions.create(
-            model="gpt-6-luna", # era precedentemente gpt-3.5-turbo-0125
+            model="gpt-3.5-turbo-0125", # era precedentemente gpt-3.5-turbo-0125  gpt-6-luna
             messages=[
                 {"role": "system", "content": "Sei un assistente esperto in offerte luce e gas."},
                 {"role": "user", "content": prompt}
