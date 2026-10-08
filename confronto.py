@@ -5,7 +5,7 @@ import logging
 
 logger = logging.getLogger("uvicorn.error")
 
-def confronta_offerte(bolletta):
+def confronta_offerte(bolletta, *, tenant_id=None):
     kwh_totali = bolletta["kwh_totali"]
     mesi_bolletta = bolletta["mesi_bolletta"]
     spesa_vendita_energia = bolletta["spesa_vendita_energia"]
@@ -22,7 +22,7 @@ def confronta_offerte(bolletta):
     customer_power_kw = bolletta.get("potenza_kw")
     if customer_power_kw is None:
         logger.warning("customer_power_kw missing - power eligibility filter skipped")
-    offerte = get_offerte(tipo_fornitura, tipologia_cliente, customer_power_kw)
+    offerte = get_offerte(tipo_fornitura, tipologia_cliente, customer_power_kw, tenant_id=tenant_id)
     #prezzo_mercato = get_prezzo_mercato(tipo_fornitura, data)
     dati_mercato = get_prezzo_mercato(tipo_fornitura, data)
     #ricavo sia prezzo del PUN/PSV che spesa per dispacciamento ccr ecc ecc

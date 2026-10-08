@@ -11,7 +11,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ end
   if (!process.env.BACKEND_URL) return NextResponse.json({ detail: "Collegamento al servizio non configurato" }, { status: 503 });
   try {
     const headers = new Headers();
-    if (process.env.API_SECRET_KEY) headers.set("x-api-key", process.env.API_SECRET_KEY);
+    const cookie = request.headers.get("cookie"); if (cookie) headers.set("cookie", cookie);
     const response = await fetch(`${process.env.BACKEND_URL.replace(/\/$/, "")}/${endpoint}`, { headers, cache: "no-store", signal: AbortSignal.timeout(30_000) });
     return NextResponse.json(await response.json(), { status: response.status, headers: { "Cache-Control": "no-store" } });
   } catch {
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ en
   const timeout = setTimeout(() => controller.abort(), 290_000);
   try {
     const headers = new Headers();
-    if (process.env.API_SECRET_KEY) headers.set("x-api-key", process.env.API_SECRET_KEY);
+    const cookie = request.headers.get("cookie"); if (cookie) headers.set("cookie", cookie);
     let body: FormData | string;
     if (endpoint.startsWith("upload-")) {
       const form = await request.formData();

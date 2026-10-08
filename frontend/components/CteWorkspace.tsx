@@ -4,6 +4,7 @@ import { ArrowRight, CheckCircle2, Database, FileCheck2, FolderOpen, LoaderCircl
 import UploadZone from "./UploadZone";
 import CaricamentoMassivoCTE from "@/CaricamentoMassivoCTE";
 import { service, errorMessage } from "@/lib/api";
+import { directConnection, readConnection } from "@/lib/connection";
 import type { Offerta } from "@/lib/types";
 
 const empty: Offerta = { fornitore: "", nome_offerta: "", tipologia_cliente: "", tariffa: "", prezzo_kwh: null, spread: null, costo_fisso: null, valid_from: null, valid_until: null, fonte_cte: "", vincoli: "", notes: "", tipo_fornitura: "" };
@@ -84,7 +85,7 @@ export default function CteWorkspace() {
         </form>}
       </section></div>
     </div>
-    <div id="batch-panel" role="tabpanel" aria-labelledby="batch-tab" hidden={mode !== "batch"} className="panel batch-panel"><CaricamentoMassivoCTE baseUrl="/api/service" onRunningChange={setBatchBusy} /></div>
+    <div id="batch-panel" role="tabpanel" aria-labelledby="batch-tab" hidden={mode !== "batch"} className="panel batch-panel"><CaricamentoMassivoCTE baseUrl={directConnection ? readConnection().url : "/api/service"} onRunningChange={setBatchBusy} /></div>
     {error && <div className="alert error" role="alert">{error}</div>}
   </>;
 }

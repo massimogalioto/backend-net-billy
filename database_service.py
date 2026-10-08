@@ -85,8 +85,8 @@ def is_power_eligible(customer_power_kw: float | None, min_power_kw: Any,
 
 
 def get_offerte(tipo_fornitura: str, tipologia_cliente: str,
-                customer_power_kw: float | None = None) -> list[dict[str, Any]]:
-    tenant_id = default_tenant_id()
+                customer_power_kw: float | None = None, *, tenant_id: str | None = None) -> list[dict[str, Any]]:
+    tenant_id = tenant_id or default_tenant_id()
     with _connection() as conn, conn.cursor() as cur:
         cur.execute(
             """SELECT * FROM cte_offers
@@ -104,7 +104,7 @@ def get_offerte(tipo_fornitura: str, tipologia_cliente: str,
 
 
 def list_cte_offers(customer_type: str | None = None, supply_type: str | None = None,
-                    active_only: bool = True) -> list[dict[str, Any]]:
+                    active_only: bool = True, *, tenant_id: str | None = None) -> list[dict[str, Any]]:
     """Commercial archive fields only; tenant always resolved by the backend."""
     with _connection() as conn, conn.cursor() as cur:
         cur.execute(
@@ -119,17 +119,17 @@ def list_cte_offers(customer_type: str | None = None, supply_type: str | None = 
                  AND (%s::text IS NULL OR customer_type = %s)
                  AND (%s::text IS NULL OR supply_type = %s)
                ORDER BY customer_type, supplier, offer_name, id""",
-            (default_tenant_id(), active_only, customer_type, customer_type,
+            (tenant_id or default_tenant_id(), active_only, customer_type, customer_type,
              supply_type, supply_type),
         )
         return [{**{key: _normalize_numeric(value) for key, value in row.items()},
                  "id": str(row["id"])} for row in cur.fetchall()]
 
 
-def find_duplicate_cte_offer(dati: dict[str, Any]) -> str | None:
+def find_duplicate_cte_offer(dati: dict[str, Any], *, tenant_id: str | None = None) -> str | None:
     # TODO: enforce duplicate protection at database level after the
     # duplicate fingerprint has been validated in production.
-    tenant_id = default_tenant_id()
+    tenant_id = tenant_id or default_tenant_id()
     with _connection() as conn, conn.cursor() as cur:
         cur.execute(
             """SELECT id FROM cte_offers
@@ -156,8 +156,8 @@ def find_duplicate_cte_offer(dati: dict[str, Any]) -> str | None:
         return str(row["id"]) if row else None
 
 
-def insert_offer(dati: dict[str, Any], pdf_metadata: dict[str, Any] | None = None) -> str:
-    tenant_id = default_tenant_id()
+def insert_offer(dati: dict[str, Any], pdf_metadata: dict[str, Any] | None = None, *, tenant_id: str | None = None) -> str:
+    tenant_id = tenant_id or default_tenant_id()
     metadata = pdf_metadata or {}
     valid_from = dati.get("valid_from") or None
     with _connection() as conn, conn.cursor() as cur:
@@ -179,8 +179,8 @@ def insert_offer(dati: dict[str, Any], pdf_metadata: dict[str, Any] | None = Non
         return str(cur.fetchone()["id"])
 
 
-def get_offer_pdf(offer_id: str) -> dict[str, Any] | None:
-    tenant_id = default_tenant_id()
+def get_offer_pdf(offer_id: str, *, tenant_id: str | None = None) -> dict[str, Any] | None:
+    tenant_id = tenant_id or default_tenant_id()
     with _connection() as conn, conn.cursor() as cur:
         cur.execute(
             """SELECT id, pdf_object_key, pdf_filename, pdf_content_type
@@ -333,14 +333,14 @@ def upsert_psv_month_price(reference_date: date, value_eur_smc: Decimal, disp: D
         return "insert" if cur.fetchone()["inserted"] else "update"
 
 
-def update_cte_offer(offer_id: str, changes: dict[str, Any]) -> bool:
+def update_cte_offer(offer_id: str, changes: dict[str, Any], *, tenant_id: str | None = None) -> bool:
     """Update only commercial columns, under the existing backend tenant."""
     allowed = {"supplier", "offer_name", "customer_type", "supply_type", "tariff_type",
                "fixed_price_kwh", "spread_kwh", "monthly_fixed_cost", "min_power_kw",
                "max_power_kw", "valid_from", "valid_until", "notes", "source_cte"}
     if not changes or not changes.keys() <= allowed:
         raise ValueError("Nessun campo commerciale valido")
-    tenant = default_tenant_id()
+    tenant = tenant_id or default_tenant_id()
     with _connection() as conn, conn.cursor() as cur:
         cur.execute("SELECT * FROM cte_offers WHERE id = %s AND tenant_id = %s FOR UPDATE", (offer_id, tenant))
         current = cur.fetchone()

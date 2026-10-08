@@ -10,8 +10,7 @@ if (root) {
   const panel = document.createElement("section"); panel.className = "panel"; panel.hidden = true; panel.id = "cte-archive";
   root.prepend(nav); root.append(panel);
   function connection() {
-    const fallback = { url: "https://backend-net-billy-production.up.railway.app", key: "" };
-    try { return { ...fallback, ...JSON.parse(sessionStorage.getItem("energia-backend") || "{}") }; } catch { return fallback; }
+    return { url: "https://backend-net-billy-production.up.railway.app" };
   }
   function select(showArchive) {
     if (showArchive && panel.hidden) states = uploadNodes.map(node => node.hidden);
@@ -22,11 +21,11 @@ if (root) {
     upload.setAttribute("aria-pressed", String(!showArchive)); archive.setAttribute("aria-pressed", String(showArchive));
     if (showArchive) mountArchive(panel, { connection, update: async (id, changes) => {
       const settings = connection();
-      const response = await fetch(`${settings.url.replace(/\/+$/, "")}/cte-offers/${encodeURIComponent(id)}`, { method: "PATCH", headers: { "Content-Type": "application/json", ...(settings.key ? { "x-api-key": settings.key } : {}) }, body: JSON.stringify(changes) });
+      const response = await fetch(`${settings.url.replace(/\/+$/, "")}/cte-offers/${encodeURIComponent(id)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(changes) });
       const data = await response.json(); if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Dati CTE non validi");
     }, request: async () => {
       const settings = connection();
-      const response = await fetch(`${settings.url.replace(/\/+$/, "")}/cte-offers`, { headers: settings.key ? { "x-api-key": settings.key } : undefined, signal: AbortSignal.timeout(30_000) });
+      const response = await fetch(`${settings.url.replace(/\/+$/, "")}/cte-offers`, { credentials: "include", signal: AbortSignal.timeout(30_000) });
       const data = await response.json(); if (!response.ok) throw new Error(data.detail || "Archivio CTE non disponibile"); return data;
     } });
   }

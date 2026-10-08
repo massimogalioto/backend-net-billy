@@ -2,17 +2,18 @@ from datetime import date
 import math
 import re
 from pydantic import BaseModel, validator
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException
 from database_service import ConfigurationError, list_cte_offers, update_cte_offer
+from auth_service import CurrentUser, current_user
 
 router = APIRouter()
 
 
 @router.get("/cte-offers")
 def cte_archive(customer_type: str | None = None, supply_type: str | None = None,
-                active_only: bool = True):
+                active_only: bool = True, user: CurrentUser = Depends(current_user)):
     try:
-        return {"offers": list_cte_offers(customer_type, supply_type, active_only)}
+        return {"offers": list_cte_offers(customer_type, supply_type, active_only, tenant_id=user.tenant_id)}
     except ConfigurationError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
     except Exception as error:
@@ -81,12 +82,9 @@ class CteOfferPatch(BaseModel):
 
 
 @router.patch("/cte-offers/{offer_id}")
-def edit_cte(offer_id: str, payload: CteOfferPatch, x_api_key: str = Header(None)):
-    from os import getenv
-    if x_api_key != getenv("API_SECRET_KEY"):
-        raise HTTPException(status_code=401, detail="Chiave API non valida")
+def edit_cte(offer_id: str, payload: CteOfferPatch, user: CurrentUser = Depends(current_user)):
     try:
-        if not update_cte_offer(offer_id, payload.dict(exclude_unset=True)):
+        if not update_cte_offer(offer_id, payload.dict(exclude_unset=True), tenant_id=user.tenant_id):
             raise HTTPException(status_code=404, detail="CTE non trovata")
         return {"status": "updated", "id": offer_id}
     except ValueError as error:

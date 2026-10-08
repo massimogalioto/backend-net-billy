@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, ValidationError, root_validator, validator
 from database_service import ConfigurationError, find_duplicate_cte_offer, insert_offer
 from fastapi.responses import JSONResponse
 from storage_service import delete_pdf, upload_cte_pdf
+from auth_service import CurrentUser, current_user
 import logging
 import base64
 import binascii
@@ -80,37 +81,29 @@ def _validated_offer(payload: dict | OffertaInput):
         return _validation_error(payload, error)
 
 @router.post("/salva-offerta", summary="Salva un'offerta CTE in PostgreSQL")
-def salva(payload: dict, x_api_key: str = Header(None)):
-    from os import getenv
-    if x_api_key != getenv("API_SECRET_KEY"):
-        raise HTTPException(status_code=401, detail="Chiave API non valida")
-
+def salva(payload: dict, user: CurrentUser = Depends(current_user)):
     offerta = _validated_offer(payload)
     if isinstance(offerta, JSONResponse):
         return offerta
 
-    return _salva_validata(offerta)
+    return _salva_validata(offerta, user.tenant_id)
 
 
 @router.post("/salva-offerta-manuale", summary="Salva una CTE corretta manualmente senza rieseguire l'AI")
-def salva_manuale(payload: dict, x_api_key: str = Header(None)):
-    from os import getenv
-    if x_api_key != getenv("API_SECRET_KEY"):
-        raise HTTPException(status_code=401, detail="Chiave API non valida")
-
+def salva_manuale(payload: dict, user: CurrentUser = Depends(current_user)):
     offerta = _validated_offer(payload)
     if isinstance(offerta, JSONResponse):
         return offerta
-    return _salva_validata(offerta)
+    return _salva_validata(offerta, user.tenant_id)
 
 
-def _salva_validata(offerta: OffertaInput):
+def _salva_validata(offerta: OffertaInput, tenant_id: str):
 
     dati = offerta.dict(exclude={"cte_pdf", "cte_retry_token"})
     if offerta.cte_retry_token:
         raise HTTPException(status_code=422, detail="Retry CTE non supportato: ripeti il salvataggio del PDF originale")
     try:
-        existing_offer_id = find_duplicate_cte_offer(dati)
+        existing_offer_id = find_duplicate_cte_offer(dati, tenant_id=tenant_id)
     except ConfigurationError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
     except Exception as error:
@@ -139,7 +132,7 @@ def _salva_validata(offerta: OffertaInput):
             logger.exception("[CTE] Bucket upload fallito: %s", filename)
             raise HTTPException(status_code=502, detail="Caricamento PDF nel Bucket fallito") from error
     try:
-        offer_id = insert_offer(dati, pdf_metadata)
+        offer_id = insert_offer(dati, pdf_metadata, tenant_id=tenant_id)
     except ConfigurationError as error:
         if pdf_metadata:
             delete_pdf(pdf_metadata["object_key"])

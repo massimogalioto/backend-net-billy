@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -14,6 +14,8 @@ from database_service import ConfigurationError, get_offer_pdf
 from storage_service import get_pdf
 from market_prices_endpoint import router as market_prices_router
 from cte_archive_endpoint import router as cte_archive_router
+from auth_endpoint import router as auth_router
+from auth_service import CurrentUser, current_user
 
 app = FastAPI(
     title="Servizio confronto bollette",
@@ -22,9 +24,10 @@ app = FastAPI(
 )
 
 # CORS (in produzione metti il dominio del frontend)
+allowed_origins = [origin.strip() for origin in os.getenv("AUTH_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Es: ["https://madonie-front.vercel.app"]
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -38,12 +41,12 @@ app.include_router(analizza_bolletta_router)
 app.include_router(estrai_testo_pdf_router)
 app.include_router(market_prices_router)
 app.include_router(cte_archive_router)
+app.include_router(auth_router)
 
 @app.get("/cte-offers/{offer_id}/pdf")
-def cte_pdf(offer_id: str):
-    # TEMPORARY TEST MODE - authentication will replace DEFAULT_TENANT_ID
+def cte_pdf(offer_id: str, user: CurrentUser = Depends(current_user)):
     try:
-        offer = get_offer_pdf(offer_id)
+        offer = get_offer_pdf(offer_id, tenant_id=user.tenant_id)
         if not offer or not offer["pdf_object_key"]:
             raise HTTPException(status_code=404, detail="PDF CTE non trovato")
         content = get_pdf(offer["pdf_object_key"])
@@ -73,24 +76,16 @@ class PeriodoRequest(BaseModel):
 
 # 🔐 Endpoint confronto con chiave API
 @app.post("/confronta")
-def confronta_bolletta(bolletta: BollettaInput, x_api_key: str = Header(None)):
-    secret_key = os.getenv("API_SECRET_KEY")
-    if secret_key and x_api_key != secret_key:
-        raise HTTPException(status_code=401, detail="Chiave API non valida")
-
+def confronta_bolletta(bolletta: BollettaInput, user: CurrentUser = Depends(current_user)):
     try:
-        risultato = confronta_offerte(bolletta.dict()) #modifica 05-09-2025
+        risultato = confronta_offerte(bolletta.dict(), tenant_id=user.tenant_id) #modifica 05-09-2025
         return {"offerte": risultato}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 # 🧠 Endpoint AI per calcolo mesi
 @app.post("/calcola-mesi", summary="Calcola i mesi da un intervallo testuale")
-def calcola_mesi(body: PeriodoRequest, x_api_key: str = Header(None)):
-    secret_key = os.getenv("API_SECRET_KEY")
-    if secret_key and x_api_key != secret_key:
-        raise HTTPException(status_code=401, detail="Chiave API non valida")
-
+def calcola_mesi(body: PeriodoRequest, user: CurrentUser = Depends(current_user)):
     mesi = chiedi_ai_mesi(body.periodo)
     if mesi is None:
         return {"error": "Impossibile determinare il numero di mesi"}

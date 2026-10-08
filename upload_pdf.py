@@ -3,7 +3,8 @@ import os
 import asyncio
 from starlette.concurrency import run_in_threadpool
 from cte_pipeline import processa_cte
-from fastapi import APIRouter, UploadFile, File, HTTPException, Header
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from auth_service import CurrentUser, current_user
 from fastapi.responses import JSONResponse
 from tempfile import NamedTemporaryFile
 from estrai_dati_bolletta import estrai_dati_bolletta  # ✅ estrae dati bolletta
@@ -23,10 +24,7 @@ cte_slots = asyncio.Semaphore(MAX_CONCURRENT)
 
 # 📄 Estrazione testo da CTE usando OCR
 @router.post("/upload-cte")
-async def upload_cte_pdf(file: UploadFile = File(...), x_api_key: str = Header(None)):
-    secret_key = os.getenv("API_SECRET_KEY")
-    if secret_key and x_api_key != secret_key:
-        raise HTTPException(status_code=401, detail="Chiave API non valida_")
+async def upload_cte_pdf(file: UploadFile = File(...), user: CurrentUser = Depends(current_user)):
         
     if not (file.filename or "").lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Il file deve essere un PDF")
@@ -51,7 +49,7 @@ async def upload_cte_pdf(file: UploadFile = File(...), x_api_key: str = Header(N
 
 # 🧾 Estrazione + confronto da bolletta PDF
 @router.post("/upload-bolletta")
-async def upload_bolletta(file: UploadFile = File(...)):
+async def upload_bolletta(file: UploadFile = File(...), user: CurrentUser = Depends(current_user)):
     try:
         with NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
             file.file.seek(0)
@@ -101,7 +99,7 @@ async def upload_bolletta(file: UploadFile = File(...)):
             "data_riferimento": data_oggi_iso()
         }
 
-        offerte = confronta_offerte(confronto_input)
+        offerte = confronta_offerte(confronto_input, tenant_id=user.tenant_id)
 
         return {
             "bolletta": dati,
