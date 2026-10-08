@@ -4,6 +4,7 @@ from database_service import ConfigurationError, find_duplicate_cte_offer, inser
 from fastapi.responses import JSONResponse
 from storage_service import delete_pdf, upload_cte_pdf
 from auth_service import CurrentUser, current_user
+from plan_service import UsageLimitError, ensure_active_cte_capacity
 import logging
 import base64
 import binascii
@@ -113,6 +114,11 @@ def _salva_validata(offerta: OffertaInput, tenant_id: str):
         return JSONResponse(status_code=409, content={
             "detail": "CTE già presente", "existing_offer_id": existing_offer_id,
         })
+    try:
+        # Early rejection avoids the Bucket upload when no active CTE slot remains.
+        ensure_active_cte_capacity(tenant_id, offerta.valid_until)
+    except UsageLimitError as error:
+        return JSONResponse(status_code=403, content=error.payload())
     pdf_metadata = None
     if offerta.cte_pdf:
         filename = offerta.cte_pdf.filename
@@ -133,6 +139,10 @@ def _salva_validata(offerta: OffertaInput, tenant_id: str):
             raise HTTPException(status_code=502, detail="Caricamento PDF nel Bucket fallito") from error
     try:
         offer_id = insert_offer(dati, pdf_metadata, tenant_id=tenant_id)
+    except UsageLimitError as error:
+        if pdf_metadata:
+            delete_pdf(pdf_metadata["object_key"])
+        return JSONResponse(status_code=403, content=error.payload())
     except ConfigurationError as error:
         if pdf_metadata:
             delete_pdf(pdf_metadata["object_key"])

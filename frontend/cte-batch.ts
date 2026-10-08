@@ -30,7 +30,8 @@ async function request(url: string, init: RequestInit) {
     if (response.status === 409 && data.detail === "CTE già presente") throw new Error("Questa CTE risulta già presente nel tuo archivio.");
     if (!response.ok) {
       if (response.status === 422 && data && typeof data === "object" && (data as { status?: string }).status === "validation_error") throw new ValidationError(data as ValidationResponse);
-      throw new Error(typeof data.detail === "string" ? data.detail : `Errore HTTP ${response.status}: ${JSON.stringify(data.detail)}`);
+      const detail = data.message ?? data.detail;
+      throw new Error(typeof detail === "string" ? detail : `Errore HTTP ${response.status}: ${JSON.stringify(detail)}`);
     }
     return data;
   } catch (error) {

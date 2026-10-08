@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { UsageSummary } from "@/components/UsageSummary";
 import { ArrowRight, ArrowUpRight, FileText, FolderOpen, ScanLine, ShieldCheck, Sparkles, Zap } from "lucide-react";
 
 export default function Home() {
   return <>
+    <UsageSummary />
     <section className="hero">
       <div className="hero-landscape" aria-hidden="true" />
       <div className="shell hero-grid">

@@ -161,6 +161,9 @@ def insert_offer(dati: dict[str, Any], pdf_metadata: dict[str, Any] | None = Non
     metadata = pdf_metadata or {}
     valid_from = dati.get("valid_from") or None
     with _connection() as conn, conn.cursor() as cur:
+        # The final check shares the INSERT transaction, closing concurrent upload races.
+        from plan_service import ensure_active_cte_capacity
+        ensure_active_cte_capacity(tenant_id, dati.get("valid_until") or None, conn=conn)
         cur.execute(
             """INSERT INTO cte_offers
                (tenant_id, supplier, offer_name, customer_type, supply_type, tariff_type,
@@ -347,6 +350,10 @@ def update_cte_offer(offer_id: str, changes: dict[str, Any], *, tenant_id: str |
         if current is None:
             return False
         merged = {**current, **changes}
+        if (not _cte_is_active(current.get("valid_until")) and
+                _cte_is_active(merged.get("valid_until"))):
+            from plan_service import ensure_active_cte_capacity
+            ensure_active_cte_capacity(tenant, merged.get("valid_until"), conn=conn)
         minimum, maximum = merged["min_power_kw"], merged["max_power_kw"]
         if minimum is not None and maximum is not None and minimum > maximum:
             raise ValueError("La potenza minima deve essere minore o uguale alla massima")
@@ -359,3 +366,11 @@ def update_cte_offer(offer_id: str, changes: dict[str, Any], *, tenant_id: str |
         cur.execute(f"UPDATE cte_offers SET {assignments} WHERE id = %s AND tenant_id = %s RETURNING id",
                     (*changes.values(), offer_id, tenant))
         return cur.fetchone() is not None
+
+
+def _cte_is_active(valid_until: Any) -> bool:
+    if valid_until is None:
+        return True
+    if isinstance(valid_until, str):
+        valid_until = date.fromisoformat(valid_until)
+    return valid_until >= date.today()

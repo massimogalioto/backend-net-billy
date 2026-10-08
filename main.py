@@ -16,6 +16,8 @@ from market_prices_endpoint import router as market_prices_router
 from cte_archive_endpoint import router as cte_archive_router
 from auth_endpoint import router as auth_router
 from auth_service import CurrentUser, current_user
+from account_endpoint import router as account_router
+from plan_service import UsageLimitError, comparison_slot
 
 app = FastAPI(
     title="Servizio confronto bollette",
@@ -42,6 +44,7 @@ app.include_router(estrai_testo_pdf_router)
 app.include_router(market_prices_router)
 app.include_router(cte_archive_router)
 app.include_router(auth_router)
+app.include_router(account_router)
 
 @app.get("/cte-offers/{offer_id}/pdf")
 def cte_pdf(offer_id: str, user: CurrentUser = Depends(current_user)):
@@ -78,8 +81,14 @@ class PeriodoRequest(BaseModel):
 @app.post("/confronta")
 def confronta_bolletta(bolletta: BollettaInput, user: CurrentUser = Depends(current_user)):
     try:
-        risultato = confronta_offerte(bolletta.dict(), tenant_id=user.tenant_id) #modifica 05-09-2025
+        with comparison_slot(user.tenant_id, user.id) as slot:
+            risultato = confronta_offerte(bolletta.dict(), tenant_id=user.tenant_id) #modifica 05-09-2025
+            if risultato:
+                slot.record_success(bolletta.tipo_fornitura)
         return {"offerte": risultato}
+    except UsageLimitError as error:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=403, content=error.payload())
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

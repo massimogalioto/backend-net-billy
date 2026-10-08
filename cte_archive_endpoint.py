@@ -5,6 +5,7 @@ from pydantic import BaseModel, validator
 from fastapi import APIRouter, Depends, HTTPException
 from database_service import ConfigurationError, list_cte_offers, update_cte_offer
 from auth_service import CurrentUser, current_user
+from plan_service import UsageLimitError
 
 router = APIRouter()
 
@@ -89,5 +90,8 @@ def edit_cte(offer_id: str, payload: CteOfferPatch, user: CurrentUser = Depends(
         return {"status": "updated", "id": offer_id}
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    except UsageLimitError as error:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=403, content=error.payload())
     except ConfigurationError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error

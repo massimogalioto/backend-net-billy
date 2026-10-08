@@ -77,11 +77,12 @@ class DuplicateTests(unittest.TestCase):
         }}
         with patch.dict("os.environ", {"API_SECRET_KEY": "test"}), patch.object(
             endpoint, "find_duplicate_cte_offer", return_value=None
-        ) as duplicate, patch.object(
+        ), patch.object(endpoint, "ensure_active_cte_capacity"
+        ) as capacity, patch.object(
             endpoint, "upload_cte_pdf", return_value={"object_key": "cte/key", "filename": "test.pdf", "content_type": "application/pdf", "size_bytes": 13}
         ) as upload, patch.object(endpoint, "insert_offer", return_value="new") as insert:
             self.assertEqual(endpoint.salva_manuale(payload, "test"), {"successo": True, "id": "new"})
-        duplicate.assert_called_once()
+        capacity.assert_called_once()
         upload.assert_called_once()
         insert.assert_called_once()
 
@@ -102,12 +103,13 @@ class DuplicateTests(unittest.TestCase):
             "content_base64": base64.b64encode(b"%PDF-original").decode()})
         calls = []
         with patch.dict("os.environ", {"API_SECRET_KEY": "test"}), patch.object(
-            endpoint, "find_duplicate_cte_offer", side_effect=lambda data: calls.append("check")
+            endpoint, "find_duplicate_cte_offer", side_effect=lambda *args, **kwargs: calls.append("check")
+        ), patch.object(endpoint, "ensure_active_cte_capacity", side_effect=lambda *args: calls.append("limit")
         ), patch.object(endpoint, "upload_cte_pdf", side_effect=lambda *args: calls.append("upload") or {"object_key": "pdf"}), patch.object(
             endpoint, "insert_offer", side_effect=lambda *args: calls.append("insert") or "new"
         ):
             self.assertEqual(endpoint.salva(offer, "test"), {"successo": True, "id": "new"})
-        self.assertEqual(calls, ["check", "upload", "insert"])
+        self.assertEqual(calls, ["check", "limit", "upload", "insert"])
 
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@ export default function CteArchive() {
         const url = directConnection ? `${settings.url.replace(/\/+$/, "")}/cte-offers/${encodeURIComponent(id)}` : `/api/cte-offers/${encodeURIComponent(id)}`;
         const response = await fetch(url, { method: "PATCH", headers, body: JSON.stringify(changes), credentials: "include", signal: AbortSignal.timeout(30_000) });
         const data = await response.json();
-        if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Dati CTE non validi");
+        if (!response.ok) throw new Error(typeof (data.message ?? data.detail) === "string" ? (data.message ?? data.detail) : "Dati CTE non validi");
       }, request: async () => {
         const response = await fetch(...connectionRequest("/api/service/cte-offers", { signal: AbortSignal.timeout(30_000) }));
         const data = await response.json();

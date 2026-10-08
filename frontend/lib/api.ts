@@ -12,7 +12,7 @@ export async function service<T>(endpoint: string, body: FormData | object): Pro
     try { data = await response.json(); } catch { throw new Error(`Risposta del servizio non leggibile (HTTP ${response.status})`); }
     if (!response.ok || data.errore) {
       if (response.status === 409 && data.detail === "CTE già presente") throw new Error("Questa CTE risulta già presente nel tuo archivio.");
-      const detail = data.detail ?? data.errore;
+      const detail = data.message ?? data.detail ?? data.errore;
       throw new Error(typeof detail === "string" ? detail + (data.mancanti ? `: ${data.mancanti.join(", ")}` : "") : JSON.stringify(detail ?? `Errore HTTP ${response.status}`));
     }
     return data;
