@@ -33,7 +33,7 @@ async def estrai_testo_pdf(file: UploadFile = File(...)):
 
         return JSONResponse({
             "filename": file.filename,
-            "contenuto_testo": testo_estratto[:10000]  #modificato (2025-06-03)
+            "contenuto_testo": testo_estratto[:20000]  #modificato (2026-10-12)
         })
 
     except Exception as e:
