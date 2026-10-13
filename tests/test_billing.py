@@ -126,6 +126,20 @@ class BillingWebhookServiceTests(unittest.TestCase):
         plain = {"id": "cus_plain"}
         self.assertIs(billing_service._as_dict(plain), plain)
 
+    def test_upsert_tracks_classic_flexible_and_revoked_cancellations(self):
+        cases = (
+            ({"cancel_at_period_end": True, "cancel_at": None}, True),
+            ({"cancel_at_period_end": False, "cancel_at": 1794528000}, True),
+            ({"cancel_at_period_end": False, "cancel_at": None}, False),
+        )
+        for cancellation_fields, expected in cases:
+            with self.subTest(fields=cancellation_fields):
+                cursor = MagicMock()
+                subscription = {**self.subscription(), **cancellation_fields}
+                billing_service._upsert_subscription(cursor, "tenant-a", subscription, "START")
+                params = cursor.execute.call_args.args[1]
+                self.assertIs(params[6], expected)
+
     def test_checkout_uses_server_side_price_for_start_and_top(self):
         for plan, expected_price in (("START", "price_start"), ("TOP", "price_top")):
             with self.subTest(plan=plan):

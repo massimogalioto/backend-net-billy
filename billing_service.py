@@ -279,6 +279,10 @@ def _set_app_plan(cur, tenant_id: str, plan_code: str,
 def _upsert_subscription(cur, tenant_id: str, subscription: dict[str, Any],
                          plan_code: str | None, grace_until: datetime | None = None) -> None:
     period_start, period_end = _subscription_period(subscription)
+    cancel_scheduled = bool(
+        subscription.get("cancel_at_period_end")
+        or subscription.get("cancel_at")
+    )
     cur.execute(
         """INSERT INTO billing_subscriptions
            (tenant_id, stripe_subscription_id, stripe_status, plan_code,
@@ -295,7 +299,7 @@ def _upsert_subscription(cur, tenant_id: str, subscription: dict[str, Any],
              updated_at = NOW()""",
         (tenant_id, subscription["id"], subscription.get("status"), plan_code,
          period_start, period_end,
-         bool(subscription.get("cancel_at_period_end")), grace_until),
+         cancel_scheduled, grace_until),
     )
 
 
