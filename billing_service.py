@@ -68,6 +68,8 @@ def _create(resource, params: dict[str, Any], idempotency_key: str | None = None
 def _as_dict(obj: Any) -> dict[str, Any]:
     if isinstance(obj, dict):
         return obj
+    if hasattr(obj, "to_dict"):
+        return obj.to_dict()
     if hasattr(obj, "to_dict_recursive"):
         return obj.to_dict_recursive()
     return dict(obj)

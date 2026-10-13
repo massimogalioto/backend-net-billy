@@ -111,6 +111,21 @@ class BillingWebhookServiceTests(unittest.TestCase):
             "items": {"data": [{"price": {"id": "price_start"}}]},
         }
 
+    def test_as_dict_uses_stripe_to_dict_without_iterating_resource(self):
+        class StripeCustomerResponse:
+            def to_dict(self):
+                return {"id": "cus_1", "object": "customer"}
+
+            def __iter__(self):
+                raise TypeError("Customer is not iterable or a mapping; call .to_dict() for a plain dict.")
+
+        self.assertEqual(
+            billing_service._as_dict(StripeCustomerResponse()),
+            {"id": "cus_1", "object": "customer"},
+        )
+        plain = {"id": "cus_plain"}
+        self.assertIs(billing_service._as_dict(plain), plain)
+
     def test_checkout_uses_server_side_price_for_start_and_top(self):
         for plan, expected_price in (("START", "price_start"), ("TOP", "price_top")):
             with self.subTest(plan=plan):
