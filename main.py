@@ -17,6 +17,7 @@ from cte_archive_endpoint import router as cte_archive_router
 from auth_endpoint import router as auth_router
 from auth_service import CurrentUser, current_user
 from account_endpoint import router as account_router
+from billing_endpoint import router as billing_router
 from plan_service import UsageLimitError, comparison_slot
 
 app = FastAPI(
@@ -45,6 +46,7 @@ app.include_router(market_prices_router)
 app.include_router(cte_archive_router)
 app.include_router(auth_router)
 app.include_router(account_router)
+app.include_router(billing_router)
 
 @app.get("/cte-offers/{offer_id}/pdf")
 def cte_pdf(offer_id: str, user: CurrentUser = Depends(current_user)):

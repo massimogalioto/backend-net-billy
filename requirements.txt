@@ -4,6 +4,7 @@ python-dotenv
 pyairtable
 psycopg[binary]
 argon2-cffi>=23.1.0
+stripe==15.6.0
 boto3
 openai
 PyPDF2
