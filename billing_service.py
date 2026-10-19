@@ -14,6 +14,7 @@ from database_service import ConfigurationError, _connection
 ALLOWED_PLANS = {"START", "TOP"}
 LIVE_SUBSCRIPTION_STATUSES = {"active", "trialing", "past_due", "unpaid", "paused"}
 API_VERSION = "2026-08-26.dahlia"
+CHECKOUT_CONFIGURATION_PREFIX = "tax-v1-"
 
 
 class BillingError(RuntimeError):
@@ -124,8 +125,9 @@ def create_checkout(tenant_id: str, email: str, tenant_name: str, plan_code: str
             """SELECT stripe_checkout_session_id, checkout_url, status FROM billing_checkout_sessions
                WHERE tenant_id = %s AND requested_plan_code = %s
                  AND status IN ('open', 'complete') AND expires_at > NOW()
+                 AND idempotency_key LIKE %s
                ORDER BY created_at DESC LIMIT 1""",
-            (tenant_id, plan_code),
+            (tenant_id, plan_code, f"{CHECKOUT_CONFIGURATION_PREFIX}%"),
         )
         existing = cur.fetchone()
         if existing:
@@ -133,12 +135,16 @@ def create_checkout(tenant_id: str, email: str, tenant_name: str, plan_code: str
                 raise BillingError("Checkout gia completato; attendere la sincronizzazione", 409)
             return {"checkout_url": existing["checkout_url"]}
         customer_id = _customer_for_tenant(cur, client, tenant_id, email, tenant_name)
-        attempt_id = secrets.token_urlsafe(24)
+        attempt_id = f"{CHECKOUT_CONFIGURATION_PREFIX}{secrets.token_urlsafe(24)}"
         session = _create(
             client.v1.checkout.sessions,
             {
                 "mode": "subscription",
                 "customer": customer_id,
+                "automatic_tax": {"enabled": True},
+                "billing_address_collection": "required",
+                "customer_update": {"address": "auto"},
+                "tax_id_collection": {"enabled": True},
                 "line_items": [{"price": settings["prices"][plan_code], "quantity": 1}],
                 "success_url": f"{settings['frontend_url']}/dashboard?checkout=success",
                 "cancel_url": f"{settings['frontend_url']}/dashboard?checkout=cancelled",

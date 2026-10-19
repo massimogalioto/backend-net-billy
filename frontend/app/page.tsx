@@ -1,33 +1,18 @@
 import Link from "next/link";
-import { UsageSummary } from "@/components/UsageSummary";
-import { ArrowRight, ArrowUpRight, FileText, FolderOpen, ScanLine, ShieldCheck, Sparkles, Zap } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check, FileText, FolderArchive, ScanLine, ShieldCheck, Sparkles, Zap } from "lucide-react";
 
-export default function Home() {
-  return <>
-    <UsageSummary />
-    <section className="hero">
-      <div className="hero-landscape" aria-hidden="true" />
-      <div className="shell hero-grid">
-        <div className="hero-copy"><div className="eyebrow"><span /> IL TUO SPAZIO PER L’ENERGIA</div>
-          <h1>Meno complessità.<br />Più <em>chiarezza.</em></h1>
-          <p>Le offerte e le bollette, finalmente nello stesso posto. Trasforma i tuoi documenti in informazioni utili e trova la soluzione più adatta.</p>
-          <div className="hero-actions"><Link href="/bollette" className="button primary">Confronta la tua bolletta <ArrowUpRight size={18} /></Link><Link href="/cte" className="text-link">Gestisci le CTE <ArrowRight size={16} /></Link></div>
-          <div className="hero-note"><span className="cyan-dot" /><span>DA UN PDF A UNA SCELTA INFORMATA<small>Un percorso semplice, per luce e gas.</small></span></div>
-        </div>
-        <aside className="quick-card"><div className="quick-kicker"><Sparkles size={17} /> PARTIAMO DA QUI</div><h2>Cosa vuoi fare?</h2><p>Scegli il tuo prossimo passo.</p>
-          <Link href="/cte" className="quick-option warm"><span className="option-icon"><FolderOpen size={24} /></span><span><strong>Carica CTE</strong><small>Organizza le tue offerte energetiche</small></span><ArrowUpRight size={20} /></Link>
-          <Link href="/bollette" className="quick-option"><span className="option-icon"><ScanLine size={24} /></span><span><strong>Confronta bollette</strong><small>Scopri le alternative per la tua fornitura</small></span><ArrowUpRight size={20} /></Link>
-          <div className="quick-foot"><ShieldCheck size={16} /><span>Analisi dei documenti, senza inserimenti manuali.</span></div>
-        </aside>
-      </div>
-      <div className="hero-bottom shell"><span>DOCUMENTI. DATI. DECISIONI.</span><span>SCOPRI IL WORKSPACE <span className="down-arrow">↓</span></span></div>
-    </section>
-    <section className="shell home-tools"><div className="section-heading"><div><div className="eyebrow"><span /> DUE STRUMENTI, UN SOLO SPAZIO</div><h2>La tua energia.<br /><em>Sotto controllo.</em></h2></div><p>Carica un documento, verifica i dati e passa all’azione. Tutto quello che ti serve, senza passaggi superflui.</p></div>
-      <div className="tool-grid">
-        <Link href="/cte" className="tool-card"><div className="tool-top"><span className="tool-icon amber"><FileText size={25} /></span><span className="tiny-label">01 / OFFERTE</span></div><h3>Carica CTE</h3><p>Estrai le condizioni economiche dai PDF, verifica i dettagli e salva le offerte nel tuo archivio.</p><div className="tool-features"><span>Upload singolo</span><span>Caricamento cartella</span><span>Salvataggio Airtable</span></div><div className="tool-bottom"><span>Vai alle condizioni economiche</span><ArrowUpRight size={23} /></div></Link>
-        <Link href="/bollette" className="tool-card cyan-card"><div className="tool-top"><span className="tool-icon cyan"><Zap size={25} /></span><span className="tiny-label">02 / CONFRONTO</span></div><h3>Confronta bollette</h3><p>Leggi i consumi della tua bolletta e confronta le offerte disponibili con una stima mensile trasparente.</p><div className="tool-features"><span>Analisi PDF</span><span>Riepilogo consumi</span><span>Confronto offerte</span></div><div className="tool-bottom"><span>Trova la tua prossima offerta</span><ArrowUpRight size={23} /></div></Link>
-      </div>
-    </section>
-    <section className="shell process-strip"><div><span>01</span><strong>Carica il documento</strong><p>Il tuo PDF, singolo o in cartella.</p></div><div><span>02</span><strong>Leggi i dati</strong><p>Le informazioni essenziali, in chiaro.</p></div><div><span>03</span><strong>Scegli il prossimo passo</strong><p>Salva un’offerta o confronta i costi.</p></div></section>
-  </>;
+const plans = [
+  { code: "FREE", price: "€0", tax: "al mese", cte: 2, comparisons: 4, action: "Inizia gratis", href: "/register?plan=FREE" },
+  { code: "START", price: "€14,99", tax: "al mese + IVA", cte: 20, comparisons: 120, action: "Scegli START", href: "/register?plan=START", featured: true },
+  { code: "TOP", price: "€45", tax: "al mese + IVA", cte: 100, comparisons: 300, action: "Scegli TOP", href: "/register?plan=TOP" },
+];
+
+export default function LandingPage() {
+  return <div className="landing">
+    <section className="landing-hero"><div className="shell landing-hero-grid"><div className="landing-copy"><div className="eyebrow"><span /> PIATTAFORMA PER PROFESSIONISTI ENERGIA</div><h1>Confronta le bollette.<br /><em>Trova l&apos;offerta giusta.</em><br />In pochi clic.</h1><p>Net Billy aiuta i professionisti dell&apos;energia ad analizzare le bollette e confrontarle con le offerte dei fornitori, semplificando il lavoro quotidiano.</p><div className="landing-actions"><Link href="/register?plan=FREE" className="button primary">Inizia gratuitamente <ArrowUpRight size={18} /></Link><a href="#prezzi" className="button outline">Scopri i piani <ArrowRight size={17} /></a></div><div className="landing-trust"><ShieldCheck size={17} /> Il tuo archivio CTE e le analisi, nello stesso workspace.</div></div><div className="product-preview" aria-label="Anteprima del flusso di analisi"><div className="preview-head"><span><Zap size={16} /> NET BILLY</span><i /></div><div className="preview-content"><div className="preview-summary"><span>ANALISI BOLLETTA</span><strong>Offerte compatibili</strong><small>Archivio CTE aggiornato</small></div><div className="preview-metrics"><div><small>CONSUMO</small><b>2.450 <em>kWh</em></b></div><div><small>OFFERTE</small><b className="cyan-text">6</b></div></div><div className="preview-offer"><span className="preview-icon"><FileText size={18} /></span><div><small>OFFERTA COMPATIBILE</small><strong>Condizioni energia verificate</strong></div><Check size={18} /></div><div className="preview-lines"><i /><i /><i /></div></div></div></div></section>
+    <section id="come-funziona" className="shell landing-section"><div className="landing-section-head"><div className="eyebrow"><span /> COME FUNZIONA</div><h2>Dal documento alla scelta,<br /><em>con un flusso chiaro.</em></h2></div><div className="steps-grid"><article><span>01</span><div className="step-icon"><FolderArchive size={25} /></div><h3>Carica le CTE</h3><p>Importa le condizioni delle offerte dei fornitori e organizza il tuo archivio.</p></article><article><span>02</span><div className="step-icon cyan"><ScanLine size={25} /></div><h3>Carica una bolletta</h3><p>Il sistema estrae i dati necessari al confronto.</p></article><article><span>03</span><div className="step-icon green"><Sparkles size={25} /></div><h3>Confronta le offerte</h3><p>Visualizza le offerte compatibili e i risultati dell&apos;analisi.</p></article></div></section>
+    <section id="vantaggi" className="landing-benefits"><div className="shell benefits-grid"><div><div className="eyebrow"><span /> VANTAGGI</div><h2>Più ordine per il tuo<br /><em>lavoro quotidiano.</em></h2><p>Uno spazio progettato per gestire documenti, validità e compatibilità delle offerte senza disperdere informazioni.</p></div><ul><li><Check size={17} /> Riduci il lavoro manuale sui documenti.</li><li><Check size={17} /> Mantieni un archivio centralizzato delle offerte.</li><li><Check size={17} /> Controlla la validità delle CTE.</li><li><Check size={17} /> Filtra le offerte in base alla compatibilità.</li><li><Check size={17} /> Organizza le analisi in un&apos;unica piattaforma.</li></ul></div></section>
+    <section id="prezzi" className="shell landing-section pricing-section"><div className="landing-section-head centered"><div className="eyebrow"><span /> PIANI</div><h2>Inizia con il piano<br /><em>adatto al tuo flusso.</em></h2><p>I limiti si applicano alle CTE attive e ai confronti completati nel mese.</p></div><div className="pricing-grid">{plans.map(plan => <article key={plan.code} className={plan.featured ? "price-card featured-price" : "price-card"}>{plan.featured && <span className="plan-marker">PIANO INTERMEDIO</span>}<span className="tiny-label">PIANO</span><h3>{plan.code}</h3><div className="plan-price"><strong>{plan.price}</strong><span>{plan.tax}</span></div><div className="price-features"><p><b>{plan.cte}</b> CTE attive</p><p><b>{plan.comparisons}</b> confronti mensili</p></div><Link className={plan.featured ? "button primary full" : "button outline full"} href={plan.href}>{plan.action} <ArrowUpRight size={16} /></Link></article>)}</div></section>
+    <section className="shell landing-closing"><div><span className="eyebrow"><span /> PRONTO A INIZIARE</span><h2>Metti ordine nelle offerte.<br /><em>Parti gratuitamente.</em></h2></div><Link href="/register?plan=FREE" className="button primary">Crea il tuo account <ArrowUpRight size={18} /></Link></section>
+  </div>;
 }

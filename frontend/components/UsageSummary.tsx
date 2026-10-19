@@ -16,10 +16,13 @@ function nearLimit(used: number, limit: number) {
 export function UsageSummary() {
   const [usage, setUsage] = useState<Usage | null>(null);
   useEffect(() => {
-    fetch(authUrl("/account/usage"), { credentials: "include" })
+    const load = () => fetch(authUrl("/account/usage"), { credentials: "include", cache: "no-store" })
       .then((response) => response.ok ? response.json() : null)
       .then(setUsage)
       .catch(() => setUsage(null));
+    void load();
+    window.addEventListener("net-billy:usage-refresh", load);
+    return () => window.removeEventListener("net-billy:usage-refresh", load);
   }, []);
   if (!usage) return null;
   const cteWarning = nearLimit(usage.cte.used, usage.cte.limit);

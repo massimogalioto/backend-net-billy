@@ -158,7 +158,55 @@ class BillingWebhookServiceTests(unittest.TestCase):
                 params = client.v1.checkout.sessions.create.call_args.args[0]
                 self.assertEqual(params["line_items"], [{"price": expected_price, "quantity": 1}])
                 self.assertEqual(params["customer"], "cus_1")
+                self.assertEqual(params["automatic_tax"], {"enabled": True})
+                self.assertEqual(params["billing_address_collection"], "required")
+                self.assertEqual(params["customer_update"], {"address": "auto"})
+                self.assertEqual(params["tax_id_collection"], {"enabled": True})
                 self.assertEqual(result["checkout_url"], "https://checkout.stripe.test/session")
+
+    def test_checkout_reuses_only_sessions_created_with_tax_configuration(self):
+        factory, cursor = self.connection([None, None, {"stripe_customer_id": "cus_1"}])
+        client = MagicMock()
+        client.v1.checkout.sessions.create.return_value = {
+            "id": "cs_tax", "url": "https://checkout.stripe.test/tax-session",
+            "expires_at": int((datetime.now(timezone.utc) + timedelta(hours=1)).timestamp()),
+        }
+        with patch.object(billing_service, "_settings", return_value=self.settings()), patch.object(
+            billing_service, "_connection", factory
+        ):
+            billing_service.create_checkout(
+                "tenant-a", "owner@example.com", "Tenant A", "START", client=client
+            )
+
+        checkout_lookup = next(
+            call for call in cursor.execute.call_args_list
+            if "FROM billing_checkout_sessions" in call.args[0]
+        )
+        self.assertEqual(
+            checkout_lookup.args[1],
+            ("tenant-a", "START", f"{billing_service.CHECKOUT_CONFIGURATION_PREFIX}%"),
+        )
+        checkout_insert = next(
+            call for call in cursor.execute.call_args_list
+            if "INSERT INTO billing_checkout_sessions" in call.args[0]
+        )
+        self.assertTrue(checkout_insert.args[1][3].startswith(billing_service.CHECKOUT_CONFIGURATION_PREFIX))
+
+    def test_checkout_reuses_current_tax_session(self):
+        factory, _ = self.connection([
+            None,
+            {"stripe_checkout_session_id": "cs_tax", "checkout_url": "https://checkout.stripe.test/current", "status": "open"},
+        ])
+        client = MagicMock()
+        with patch.object(billing_service, "_settings", return_value=self.settings()), patch.object(
+            billing_service, "_connection", factory
+        ):
+            result = billing_service.create_checkout(
+                "tenant-a", "owner@example.com", "Tenant A", "START", client=client
+            )
+
+        self.assertEqual(result, {"checkout_url": "https://checkout.stripe.test/current"})
+        client.v1.checkout.sessions.create.assert_not_called()
 
     def test_checkout_blocks_existing_stripe_subscription(self):
         factory, _ = self.connection([{"stripe_subscription_id": "sub_existing"}])

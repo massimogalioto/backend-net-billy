@@ -10,7 +10,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname(); const router = useRouter();
   // Static export uses trailingSlash, so the browser path is /login/ on Netlify.
   const normalizedPath = pathname.replace(/\/+$/, "");
-  const isPublicAuthPage = normalizedPath === "/login" || normalizedPath === "/register";
+  const isPublicAuthPage = normalizedPath === "" || normalizedPath === "/login" || normalizedPath === "/register";
   const [ready, setReady] = useState(isPublicAuthPage);
   useEffect(() => {
     if (isPublicAuthPage) { setReady(true); return; }
