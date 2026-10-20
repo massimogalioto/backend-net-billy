@@ -6,7 +6,6 @@
     "dev": "next dev --hostname 127.0.0.1",
     "build": "next build",
     "build:static": "node scripts/build-static.mjs",
-    "build:staging": "node scripts/build-staging-static.mjs",
     "start": "next start --hostname 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

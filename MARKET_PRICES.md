@@ -83,13 +83,3 @@ Il test browser usa Playwright con risposte simulate; se necessario impostare
 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` al browser Chromium/Chrome installato.
 I test database verificano query e contratti con connessioni simulate: non
 provano la migration né l'UPSERT sul database Railway reale.
-
-
-
-
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_START_PRICE_ID=price_1UPNygRZt98eoCeLo5cFCXg8
-STRIPE_TOP_PRICE_ID=price_1UPNyoRZt98eoCeLfShPsZBG
-STRIPE_MODE=test
-NET_BILLY_FRONTEND_URL=https://net-billy.netlify.app
-STRIPE_PAYMENT_GRACE_DAYS=7

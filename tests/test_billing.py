@@ -160,7 +160,7 @@ class BillingWebhookServiceTests(unittest.TestCase):
                 self.assertEqual(params["customer"], "cus_1")
                 self.assertEqual(params["automatic_tax"], {"enabled": True})
                 self.assertEqual(params["billing_address_collection"], "required")
-                self.assertEqual(params["customer_update"], {"address": "auto"})
+                self.assertEqual(params["customer_update"], {"address": "auto", "name": "auto"})
                 self.assertEqual(params["tax_id_collection"], {"enabled": True})
                 self.assertEqual(result["checkout_url"], "https://checkout.stripe.test/session")
 

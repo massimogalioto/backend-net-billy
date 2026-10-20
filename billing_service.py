@@ -143,7 +143,7 @@ def create_checkout(tenant_id: str, email: str, tenant_name: str, plan_code: str
                 "customer": customer_id,
                 "automatic_tax": {"enabled": True},
                 "billing_address_collection": "required",
-                "customer_update": {"address": "auto"},
+                "customer_update": {"address": "auto", "name": "auto"},
                 "tax_id_collection": {"enabled": True},
                 "line_items": [{"price": settings["prices"][plan_code], "quantity": 1}],
                 "success_url": f"{settings['frontend_url']}/dashboard?checkout=success",
