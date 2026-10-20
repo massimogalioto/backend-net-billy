@@ -45,25 +45,32 @@ class EconomicsTests(unittest.TestCase):
         results = self.compare()
         current_monthly = BILL["spesa_vendita_energia"] / BILL["mesi_bolletta"] + BILL["quota_fissa_vendita"]
         self.assertAlmostEqual(current_monthly, 60.885)
-        for result, name, cost, monthly, annual in zip(
-            results, ("A", "B"), (49.62, 56.04), (11.27, 4.85), (135.24, 58.18)
+        for result, name, cost, monthly, annual, difference_type in zip(
+            results, ("A", "B"), (58.34, 64.76), (2.55, -3.87), (30.59, -46.47),
+            ("Risparmio", "Spesa in più"),
         ):
             with self.subTest(offer=name):
                 self.assertEqual(result["nome_offerta"], name)
                 self.assertAlmostEqual(result["totale_simulato"], cost, places=2)
                 self.assertAlmostEqual(-result["differenza_mensile"], monthly, places=2)
                 self.assertAlmostEqual(result["risparmio_annuo"], annual, places=2)
-                self.assertEqual(result["tipo_differenza"], "Risparmio")
+                self.assertEqual(result["tipo_differenza"], difference_type)
         # Percentage and annual savings use unrounded amounts.
-        self.assertAlmostEqual(results[0]["percentuale"], 18.51, places=2)
-        self.assertAlmostEqual(results[1]["percentuale"], 7.96, places=2)
-        self.assertNotEqual(results[1]["risparmio_annuo"], 4.85 * 12)
+        self.assertAlmostEqual(results[0]["percentuale"], 4.19, places=2)
+        self.assertAlmostEqual(results[1]["percentuale"], 6.36, places=2)
+        self.assertNotEqual(results[1]["risparmio_annuo"], -3.87 * 12)
 
     def test_network_total_does_not_affect_savings(self):
         self.assertEqual(self.compare(), self.compare({**BILL, "spesa_materia_energia": 9999}))
 
-    def test_fixed_offer_does_not_add_market_dispatch(self):
-        self.assertEqual(self.compare(disp=0), self.compare(disp=0.5))
+    def test_fixed_offer_adds_market_dispatch(self):
+        without_dispatch = self.compare(disp=0)
+        with_dispatch = self.compare(disp=0.5)
+        expected_delta = 0.5 * (BILL["kwh_totali"] / BILL["mesi_bolletta"])
+        for base, dispatched in zip(without_dispatch, with_dispatch):
+            self.assertAlmostEqual(
+                dispatched["totale_simulato"] - base["totale_simulato"], expected_delta, places=2
+            )
 
     def test_missing_sales_component_cannot_fall_back_to_total(self):
         bill = {key: value for key, value in BILL.items() if key != "spesa_vendita_energia"}

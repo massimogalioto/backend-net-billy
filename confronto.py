@@ -47,9 +47,9 @@ def confronta_offerte(bolletta, *, tenant_id=None):
             continue
 
         if tipo_tariffa == "Fisso":
-            costo_stimato = prezzo_kwh * 1.10 * kwh_mensili + costo_fisso
+            costo_stimato = (((prezzo_kwh * 1.10) + disp) * kwh_mensili) + costo_fisso
         else:
-            costo_stimato = (prezzo_kwh + disp) * kwh_mensili + costo_fisso
+            costo_stimato = ((prezzo_kwh + disp) * kwh_mensili) + costo_fisso
         delta = costo_stimato - spesa_mensile
 
         if delta < 0:
