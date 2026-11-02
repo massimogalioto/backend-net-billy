@@ -4,10 +4,13 @@ import json
 import os
 import re
 import time
+from datetime import datetime, timezone
+import logging
 
 import requests
 
 SCALEDOWN_URL = "https://api.scaledown.xyz/v1/chat/completions"
+logger = logging.getLogger("uvicorn.error")
 
 
 class ScaleDownError(RuntimeError):
@@ -21,6 +24,10 @@ class ScaleDownError(RuntimeError):
         self.duration_ms = duration_ms
         self.error_code = error_code
         self.invalid_fields = invalid_fields
+        self.started_at = None
+        self.connect_timeout_seconds = None
+        self.read_timeout_seconds = None
+        self.timeout_type = None
 
 
 class ScaleDownConfigurationError(ScaleDownError):
@@ -58,6 +65,36 @@ def _safe_error_code(response) -> str | None:
     return text if re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", text) else None
 
 
+def _debug_enabled() -> bool:
+    return os.getenv("SCALEDOWN_DEBUG", "").strip().lower() == "true"
+
+
+def _log_request_debug(payload: dict, headers: dict, file_bytes: bytes,
+                       timeout_seconds: float, started_at: str) -> None:
+    if not _debug_enabled():
+        return
+    sanitized_payload = dict(payload)
+    sanitized_payload["document"] = "[PDF_BASE64_OMESSO]"
+    diagnostic = {
+        "endpoint": SCALEDOWN_URL,
+        "method": "POST",
+        "started_at": started_at,
+        "model": payload["model"],
+        "messages": payload["messages"],
+        "response_format": payload["response_format"],
+        "document_mime_type": payload["document_mime_type"],
+        "document": sanitized_payload["document"],
+        "pdf_size_bytes": len(file_bytes),
+        "base64_size_bytes": len(payload["document"].encode("ascii")),
+        "payload_json_size_bytes": len(json.dumps(payload).encode("utf-8")),
+        "timeout_seconds": timeout_seconds,
+        "connect_timeout_seconds": timeout_seconds,
+        "read_timeout_seconds": timeout_seconds,
+        "header_names": list(headers),
+    }
+    logger.info("[CTE][ScaleDown][Request] %s", json.dumps(diagnostic, ensure_ascii=False, separators=(",", ":")))
+
+
 def extract_pdf(file_bytes: bytes, schema: dict) -> dict:
     api_key = os.getenv("SCALEDOWN_API_KEY")
     if not api_key:
@@ -71,19 +108,34 @@ def extract_pdf(file_bytes: bytes, schema: dict) -> dict:
         "document_mime_type": "application/pdf",
         "response_format": {"type": "json_schema", "json_schema": {"name": "cte_extraction", "schema": schema}},
     }
+    headers = {"x-api-key": api_key, "Content-Type": "application/json"}
+    timeout_seconds = float(os.getenv("SCALEDOWN_TIMEOUT_SECONDS", "90"))
+    started_at_iso = datetime.now(timezone.utc).isoformat()
+    _log_request_debug(payload, headers, file_bytes, timeout_seconds, started_at_iso)
     started_at = time.monotonic()
     try:
         response = requests.post(
             SCALEDOWN_URL,
-            headers={"x-api-key": api_key, "Content-Type": "application/json"},
+            headers=headers,
             json=payload,
-            timeout=float(os.getenv("SCALEDOWN_TIMEOUT_SECONDS", "90")),
+            timeout=timeout_seconds,
         )
-    except requests.Timeout as error:
-        raise ScaleDownTimeoutError(
+    except (requests.ConnectTimeout, requests.ReadTimeout, requests.Timeout) as error:
+        if isinstance(error, requests.ConnectTimeout):
+            timeout_type = "connect"
+        elif isinstance(error, requests.ReadTimeout):
+            timeout_type = "read"
+        else:
+            timeout_type = "unspecified"
+        wrapped = ScaleDownTimeoutError(
             "Timeout durante l'estrazione ScaleDown", category="timeout",
             duration_ms=_duration_ms(started_at),
-        ) from error
+        )
+        wrapped.started_at = started_at_iso
+        wrapped.connect_timeout_seconds = timeout_seconds
+        wrapped.read_timeout_seconds = timeout_seconds
+        wrapped.timeout_type = timeout_type
+        raise wrapped from error
     except requests.RequestException as error:
         raise ScaleDownError(
             "Connessione a ScaleDown fallita", category="network",

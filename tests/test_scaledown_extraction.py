@@ -33,6 +33,44 @@ class ScaleDownProviderTests(unittest.TestCase):
         self.assertEqual(request["json"]["document_mime_type"], "application/pdf")
         self.assertEqual(request["json"]["model"], "extract")
         self.assertEqual(request["headers"]["x-api-key"], "key")
+        self.assertEqual(post.call_count, 1)
+
+    def test_request_debug_is_disabled_by_default(self):
+        with patch.dict("os.environ", {"SCALEDOWN_API_KEY": "key"}, clear=True), patch.object(
+            scaledown_provider.requests, "post", return_value=self.response(raw())
+        ), patch.object(scaledown_provider.logger, "info") as log:
+            scaledown_provider.extract_pdf(b"%PDF-private", CTE_EXTRACTION_SCHEMA)
+        log.assert_not_called()
+
+    def test_request_debug_logs_sanitized_complete_structure_and_sizes(self):
+        pdf = b"%PDF-private-original-bytes"
+        environment = {"SCALEDOWN_API_KEY": "API_KEY_SECRET", "SCALEDOWN_DEBUG": "true", "SCALEDOWN_TIMEOUT_SECONDS": "123"}
+        with patch.dict("os.environ", environment, clear=True), patch.object(
+            scaledown_provider.requests, "post", return_value=self.response(raw())
+        ) as post, self.assertLogs(scaledown_provider.logger.name, level="INFO") as logs:
+            scaledown_provider.extract_pdf(pdf, CTE_EXTRACTION_SCHEMA)
+        self.assertEqual(post.call_count, 1)
+        request = post.call_args.kwargs
+        self.assertEqual(base64.b64decode(request["json"]["document"]), pdf)
+        self.assertEqual(len(request["json"]["document"]), 36)
+        diagnostic = json.loads(logs.output[0].split("[CTE][ScaleDown][Request] ", 1)[1])
+        self.assertEqual(diagnostic["endpoint"], scaledown_provider.SCALEDOWN_URL)
+        self.assertEqual(diagnostic["method"], "POST")
+        self.assertEqual(diagnostic["model"], request["json"]["model"])
+        self.assertEqual(diagnostic["messages"], request["json"]["messages"])
+        self.assertEqual(diagnostic["response_format"], request["json"]["response_format"])
+        self.assertEqual(diagnostic["document_mime_type"], "application/pdf")
+        self.assertEqual(diagnostic["document"], "[PDF_BASE64_OMESSO]")
+        self.assertEqual(diagnostic["pdf_size_bytes"], len(pdf))
+        self.assertEqual(diagnostic["base64_size_bytes"], len(request["json"]["document"].encode("ascii")))
+        self.assertEqual(diagnostic["payload_json_size_bytes"], len(json.dumps(request["json"]).encode("utf-8")))
+        self.assertEqual(diagnostic["timeout_seconds"], 123.0)
+        self.assertEqual(diagnostic["connect_timeout_seconds"], 123.0)
+        self.assertEqual(diagnostic["read_timeout_seconds"], 123.0)
+        self.assertEqual(set(diagnostic["header_names"]), {"x-api-key", "Content-Type"})
+        serialized_log = logs.output[0]
+        for secret in ("API_KEY_SECRET", request["json"]["document"], pdf.decode("ascii")):
+            self.assertNotIn(secret, serialized_log)
 
     def test_timeout_is_structured(self):
         with patch.dict("os.environ", {"SCALEDOWN_API_KEY": "key"}), patch.object(
@@ -46,6 +84,25 @@ class ScaleDownProviderTests(unittest.TestCase):
         self.assertEqual(error.endpoint, scaledown_provider.SCALEDOWN_URL)
         self.assertNotIn("PROVIDER_SECRET", str(error))
         self.assertNotIn("PDF_SECRET", str(error))
+
+    def test_connect_and_read_timeouts_are_distinguished(self):
+        for exception, expected_type in ((requests.ConnectTimeout("secret"), "connect"),
+                                         (requests.ReadTimeout("secret"), "read")):
+            with self.subTest(timeout_type=expected_type), patch.dict(
+                "os.environ", {"SCALEDOWN_API_KEY": "key", "SCALEDOWN_TIMEOUT_SECONDS": "12"}, clear=True
+            ), patch.object(
+                scaledown_provider.requests, "post", side_effect=exception
+            ), patch.object(scaledown_provider.time, "monotonic", side_effect=[10, 10.25]), self.assertRaises(
+                scaledown_provider.ScaleDownTimeoutError
+            ) as raised:
+                scaledown_provider.extract_pdf(b"PDF_SECRET", {})
+            error = raised.exception
+            self.assertEqual(error.category, "timeout")
+            self.assertEqual(error.timeout_type, expected_type)
+            self.assertEqual(error.duration_ms, 250)
+            self.assertEqual(error.connect_timeout_seconds, 12.0)
+            self.assertEqual(error.read_timeout_seconds, 12.0)
+            self.assertTrue(error.started_at.endswith("+00:00"))
 
     def test_http_errors_are_structured_and_sanitized(self):
         for status in (400, 401, 402, 422, 500):
