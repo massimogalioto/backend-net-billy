@@ -1,5 +1,6 @@
 # estrai-testo-pdf.py
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from auth_service import CurrentUser, current_user
 from fastapi.responses import JSONResponse
 from tempfile import NamedTemporaryFile
 from pdf2image import convert_from_path  # 🆕 #modificato (2025-06-03)
@@ -9,7 +10,7 @@ import os
 router = APIRouter()
 
 @router.post("/estrai-testo-pdf", summary="Estrai testo da un PDF con OCR", tags=["Utility"])  #modificato (2025-06-03)
-async def estrai_testo_pdf(file: UploadFile = File(...)):
+async def estrai_testo_pdf(file: UploadFile = File(...), user: CurrentUser = Depends(current_user)):
     #if not file.filename.endswith(".pdf"):
     #   raise HTTPException(status_code=400, detail="Il file deve essere un PDF")
 
