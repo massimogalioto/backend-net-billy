@@ -57,6 +57,12 @@ def _normalize_cte(raw: CTERawExtraction) -> dict:
 
 def extract_document(file_bytes: bytes, document_type: str, schema: dict) -> dict:
     if document_type != "cte": raise ValueError(f"Tipo documento non supportato: {document_type}")
-    try: raw = CTERawExtraction.model_validate(extract_pdf(file_bytes, schema))
-    except ValidationError as error: raise ScaleDownResponseError("Dati ScaleDown non conformi allo schema CTE") from error
+    provider_result = extract_pdf(file_bytes, schema)
+    try: raw = CTERawExtraction.model_validate(provider_result)
+    except ValidationError as error:
+        invalid_fields = tuple(sorted({".".join(str(part) for part in item["loc"]) for item in error.errors()}))
+        raise ScaleDownResponseError(
+            "Dati ScaleDown non conformi allo schema CTE", category="validation",
+            duration_ms=getattr(provider_result, "duration_ms", None), invalid_fields=invalid_fields,
+        ) from error
     return _normalize_cte(raw)

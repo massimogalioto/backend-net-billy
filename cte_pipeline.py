@@ -11,6 +11,15 @@ logger = logging.getLogger("uvicorn.error")
 MAX_CTE_PDF_BYTES = 25 * 1024 * 1024
 
 
+def _log_scaledown_error(error: ScaleDownError) -> None:
+    logger.error(
+        "[CTE][ScaleDown] endpoint=%s category=%s status=%s duration_ms=%s error_code=%s invalid_fields=%s",
+        error.endpoint, error.category, error.status_code if error.status_code is not None else "-",
+        error.duration_ms if error.duration_ms is not None else "-", error.error_code or "-",
+        ",".join(error.invalid_fields) if error.invalid_fields else "-",
+    )
+
+
 def processa_cte(file):
     logger.info("[CTE] Inizio elaborazione")
     try:
@@ -24,10 +33,13 @@ def processa_cte(file):
         logger.info("[CTE] Estrazione completata")
         return result
     except ScaleDownConfigurationError as error:
+        _log_scaledown_error(error)
         raise HTTPException(status_code=503, detail="Servizio ScaleDown non configurato") from error
     except ScaleDownTimeoutError as error:
+        _log_scaledown_error(error)
         raise HTTPException(status_code=504, detail="Timeout durante l'estrazione del PDF") from error
     except ScaleDownError as error:
+        _log_scaledown_error(error)
         raise HTTPException(status_code=502, detail="Estrazione ScaleDown fallita") from error
     except Exception:
         logger.error("[CTE] Elaborazione fallita")
