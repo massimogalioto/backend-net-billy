@@ -20,18 +20,18 @@ PDF = b"%PDF-1.7 original-pdf-bytes"
 
 
 class PipelineTests(unittest.TestCase):
-    def test_original_pdf_reaches_document_extraction_without_ocr(self):
+    def test_original_pdf_reaches_cte_extraction_without_ocr(self):
         file = types.SimpleNamespace(filename="offer.pdf", file=io.BytesIO(PDF))
-        with patch.object(pipeline, "extract_document", return_value={"nome_offerta": "Test"}) as extract:
+        with patch.object(pipeline, "extract_cte", return_value={"nome_offerta": "Test"}) as extract:
             self.assertEqual(pipeline.processa_cte(file), {"nome_offerta": "Test"})
         self.assertEqual(extract.call_args.args[0], PDF)
-        self.assertEqual(extract.call_args.args[1], "cte")
+        self.assertEqual(len(extract.call_args.args), 1)
         self.assertNotIn("pytesseract", pipeline.__dict__)
         self.assertNotIn("convert_from_path", pipeline.__dict__)
 
     def test_invalid_pdf_is_rejected_before_provider(self):
         file = types.SimpleNamespace(filename="bad.pdf", file=io.BytesIO(b"not-pdf"))
-        with patch.object(pipeline, "extract_document") as extract, self.assertRaises(HTTPException) as error:
+        with patch.object(pipeline, "extract_cte") as extract, self.assertRaises(HTTPException) as error:
             pipeline.processa_cte(file)
         self.assertEqual(error.exception.status_code, 422)
         extract.assert_not_called()
@@ -41,14 +41,14 @@ class PipelineTests(unittest.TestCase):
         file = types.SimpleNamespace(filename="offer.pdf", file=io.BytesIO(PDF))
         provider_error = ScaleDownTimeoutError("secret", category="timeout", duration_ms=90000)
         errors = io.StringIO()
-        with patch.object(pipeline, "extract_document", side_effect=provider_error), redirect_stderr(
+        with patch.object(pipeline, "extract_cte", side_effect=provider_error), redirect_stderr(
             errors
         ), self.assertRaises(HTTPException) as error:
             pipeline.processa_cte(file)
         self.assertEqual(error.exception.status_code, 504)
         self.assertNotIn("secret", error.exception.detail)
         self.assertEqual(len(errors.getvalue().splitlines()), 1)
-        self.assertEqual(json.loads(errors.getvalue().split("[CTE][ScaleDown][Error] ", 1)[1])["category"], "timeout")
+        self.assertEqual(json.loads(errors.getvalue().split("[ScaleDown][Error] ", 1)[1])["category"], "timeout")
 
     def test_provider_error_log_contains_only_safe_metadata(self):
         from scaledown_provider import ScaleDownError
@@ -59,14 +59,14 @@ class PipelineTests(unittest.TestCase):
         )
         errors = io.StringIO()
         with patch.dict("os.environ", {"SCALEDOWN_DEBUG": "true"}), patch.object(
-            pipeline, "extract_document", side_effect=provider_error
+            pipeline, "extract_cte", side_effect=provider_error
         ), redirect_stderr(errors), self.assertRaises(HTTPException) as raised:
             pipeline.processa_cte(file)
         self.assertEqual(raised.exception.status_code, 502)
         self.assertEqual(raised.exception.detail, "Estrazione ScaleDown fallita")
         self.assertEqual(len(errors.getvalue().splitlines()), 1)
         log = errors.getvalue()
-        diagnostic = json.loads(log.split("[CTE][ScaleDown][Error] ", 1)[1])
+        diagnostic = json.loads(log.split("[ScaleDown][Error] ", 1)[1])
         self.assertEqual(diagnostic["endpoint"], "https://api.scaledown.xyz/v1/chat/completions")
         self.assertEqual(diagnostic["category"], "http")
         self.assertEqual(diagnostic["status"], 422)
@@ -81,14 +81,19 @@ class PipelineTests(unittest.TestCase):
         provider_error = ScaleDownResponseError(
             "invalid value Sconosciuta", category="validation", duration_ms=45,
             invalid_fields=("tariffa", "tipo_fornitura"),
+            validation_errors=(("tariffa", "literal_error"), ("tipo_fornitura", "missing")),
         )
         errors = io.StringIO()
-        with patch.object(pipeline, "extract_document", side_effect=provider_error), redirect_stderr(
+        with patch.object(pipeline, "extract_cte", side_effect=provider_error), redirect_stderr(
             errors
         ), self.assertRaises(HTTPException):
             pipeline.processa_cte(file)
-        diagnostic = json.loads(errors.getvalue().split("[CTE][ScaleDown][Error] ", 1)[1])
+        diagnostic = json.loads(errors.getvalue().split("[ScaleDown][Error] ", 1)[1])
         self.assertEqual(diagnostic["invalid_fields"], ["tariffa", "tipo_fornitura"])
+        self.assertEqual(diagnostic["validation_errors"], [
+            {"field": "tariffa", "type": "literal_error"},
+            {"field": "tipo_fornitura", "type": "missing"},
+        ])
         self.assertNotIn("Sconosciuta", errors.getvalue())
 
     def test_upload_response_contract_is_unchanged(self):
