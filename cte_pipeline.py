@@ -1,5 +1,7 @@
 """Shared synchronous CTE pipeline; callers run it outside the event loop."""
 import logging
+import json
+import sys
 
 from fastapi import HTTPException
 
@@ -12,14 +14,21 @@ MAX_CTE_PDF_BYTES = 25 * 1024 * 1024
 
 
 def _log_scaledown_error(error: ScaleDownError) -> None:
-    logger.error(
-        "[CTE][ScaleDown] endpoint=%s category=%s status=%s started_at=%s duration_ms=%s timeout_type=%s connect_timeout_seconds=%s read_timeout_seconds=%s error_code=%s invalid_fields=%s",
-        error.endpoint, error.category, error.status_code if error.status_code is not None else "-",
-        error.started_at or "-", error.duration_ms if error.duration_ms is not None else "-",
-        error.timeout_type or "-",
-        error.connect_timeout_seconds if error.connect_timeout_seconds is not None else "-",
-        error.read_timeout_seconds if error.read_timeout_seconds is not None else "-", error.error_code or "-",
-        ",".join(error.invalid_fields) if error.invalid_fields else "-",
+    diagnostic = {
+        "endpoint": error.endpoint,
+        "category": error.category,
+        "status": error.status_code,
+        "started_at": error.started_at,
+        "duration_ms": error.duration_ms,
+        "timeout_type": error.timeout_type,
+        "connect_timeout_seconds": error.connect_timeout_seconds,
+        "read_timeout_seconds": error.read_timeout_seconds,
+        "error_code": error.error_code,
+        "invalid_fields": list(error.invalid_fields),
+    }
+    print(
+        "[CTE][ScaleDown][Error] " + json.dumps(diagnostic, ensure_ascii=False, separators=(",", ":")),
+        file=sys.stderr, flush=True,
     )
 
 

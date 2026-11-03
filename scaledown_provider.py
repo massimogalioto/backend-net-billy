@@ -3,14 +3,13 @@ import base64
 import json
 import os
 import re
+import sys
 import time
 from datetime import datetime, timezone
-import logging
 
 import requests
 
 SCALEDOWN_URL = "https://api.scaledown.xyz/v1/chat/completions"
-logger = logging.getLogger("uvicorn.error")
 
 
 class ScaleDownError(RuntimeError):
@@ -92,7 +91,10 @@ def _log_request_debug(payload: dict, headers: dict, file_bytes: bytes,
         "read_timeout_seconds": timeout_seconds,
         "header_names": list(headers),
     }
-    logger.info("[CTE][ScaleDown][Request] %s", json.dumps(diagnostic, ensure_ascii=False, separators=(",", ":")))
+    print(
+        "[CTE][ScaleDown][Request] " + json.dumps(diagnostic, ensure_ascii=False, separators=(",", ":")),
+        file=sys.stderr, flush=True,
+    )
 
 
 def extract_pdf(file_bytes: bytes, schema: dict) -> dict:

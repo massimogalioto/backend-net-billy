@@ -1,11 +1,13 @@
 """Offline tests for the ScaleDown CTE pipeline."""
 import asyncio
 import io
+import json
 import os
 import threading
 import time
 import types
 import unittest
+from contextlib import redirect_stderr
 from unittest.mock import patch
 
 from fastapi import HTTPException
@@ -38,14 +40,15 @@ class PipelineTests(unittest.TestCase):
         from scaledown_provider import ScaleDownTimeoutError
         file = types.SimpleNamespace(filename="offer.pdf", file=io.BytesIO(PDF))
         provider_error = ScaleDownTimeoutError("secret", category="timeout", duration_ms=90000)
-        with patch.object(pipeline, "extract_document", side_effect=provider_error), self.assertLogs(
-            pipeline.logger.name, level="ERROR"
-        ) as logs, self.assertRaises(HTTPException) as error:
+        errors = io.StringIO()
+        with patch.object(pipeline, "extract_document", side_effect=provider_error), redirect_stderr(
+            errors
+        ), self.assertRaises(HTTPException) as error:
             pipeline.processa_cte(file)
         self.assertEqual(error.exception.status_code, 504)
         self.assertNotIn("secret", error.exception.detail)
-        self.assertEqual(len(logs.output), 1)
-        self.assertIn("category=timeout", logs.output[0])
+        self.assertEqual(len(errors.getvalue().splitlines()), 1)
+        self.assertEqual(json.loads(errors.getvalue().split("[CTE][ScaleDown][Error] ", 1)[1])["category"], "timeout")
 
     def test_provider_error_log_contains_only_safe_metadata(self):
         from scaledown_provider import ScaleDownError
@@ -54,17 +57,21 @@ class PipelineTests(unittest.TestCase):
             "PROVIDER_MESSAGE_SECRET", category="http", status_code=422,
             duration_ms=321, error_code="invalid_schema",
         )
-        with patch.object(pipeline, "extract_document", side_effect=provider_error), self.assertLogs(
-            pipeline.logger.name, level="ERROR"
-        ) as logs, self.assertRaises(HTTPException) as raised:
+        errors = io.StringIO()
+        with patch.dict("os.environ", {"SCALEDOWN_DEBUG": "true"}), patch.object(
+            pipeline, "extract_document", side_effect=provider_error
+        ), redirect_stderr(errors), self.assertRaises(HTTPException) as raised:
             pipeline.processa_cte(file)
         self.assertEqual(raised.exception.status_code, 502)
         self.assertEqual(raised.exception.detail, "Estrazione ScaleDown fallita")
-        self.assertEqual(len(logs.output), 1)
-        log = logs.output[0]
-        for expected in ("endpoint=https://api.scaledown.xyz/v1/chat/completions", "category=http",
-                         "status=422", "duration_ms=321", "error_code=invalid_schema"):
-            self.assertIn(expected, log)
+        self.assertEqual(len(errors.getvalue().splitlines()), 1)
+        log = errors.getvalue()
+        diagnostic = json.loads(log.split("[CTE][ScaleDown][Error] ", 1)[1])
+        self.assertEqual(diagnostic["endpoint"], "https://api.scaledown.xyz/v1/chat/completions")
+        self.assertEqual(diagnostic["category"], "http")
+        self.assertEqual(diagnostic["status"], 422)
+        self.assertEqual(diagnostic["duration_ms"], 321)
+        self.assertEqual(diagnostic["error_code"], "invalid_schema")
         for secret in ("PROVIDER_MESSAGE_SECRET", "customer-name.pdf", "original-pdf-bytes", "SCALEDOWN_API_KEY"):
             self.assertNotIn(secret, log)
 
@@ -75,12 +82,14 @@ class PipelineTests(unittest.TestCase):
             "invalid value Sconosciuta", category="validation", duration_ms=45,
             invalid_fields=("tariffa", "tipo_fornitura"),
         )
-        with patch.object(pipeline, "extract_document", side_effect=provider_error), self.assertLogs(
-            pipeline.logger.name, level="ERROR"
-        ) as logs, self.assertRaises(HTTPException):
+        errors = io.StringIO()
+        with patch.object(pipeline, "extract_document", side_effect=provider_error), redirect_stderr(
+            errors
+        ), self.assertRaises(HTTPException):
             pipeline.processa_cte(file)
-        self.assertIn("invalid_fields=tariffa,tipo_fornitura", logs.output[0])
-        self.assertNotIn("Sconosciuta", logs.output[0])
+        diagnostic = json.loads(errors.getvalue().split("[CTE][ScaleDown][Error] ", 1)[1])
+        self.assertEqual(diagnostic["invalid_fields"], ["tariffa", "tipo_fornitura"])
+        self.assertNotIn("Sconosciuta", errors.getvalue())
 
     def test_upload_response_contract_is_unchanged(self):
         file = types.SimpleNamespace(filename="single.pdf", file=io.BytesIO(PDF))

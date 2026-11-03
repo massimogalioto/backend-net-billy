@@ -1,6 +1,8 @@
 import base64
+import io
 import json
 import unittest
+from contextlib import redirect_stderr
 from unittest.mock import Mock, patch
 
 import requests
@@ -36,24 +38,26 @@ class ScaleDownProviderTests(unittest.TestCase):
         self.assertEqual(post.call_count, 1)
 
     def test_request_debug_is_disabled_by_default(self):
+        errors = io.StringIO()
         with patch.dict("os.environ", {"SCALEDOWN_API_KEY": "key"}, clear=True), patch.object(
             scaledown_provider.requests, "post", return_value=self.response(raw())
-        ), patch.object(scaledown_provider.logger, "info") as log:
+        ), redirect_stderr(errors):
             scaledown_provider.extract_pdf(b"%PDF-private", CTE_EXTRACTION_SCHEMA)
-        log.assert_not_called()
+        self.assertEqual(errors.getvalue(), "")
 
     def test_request_debug_logs_sanitized_complete_structure_and_sizes(self):
         pdf = b"%PDF-private-original-bytes"
         environment = {"SCALEDOWN_API_KEY": "API_KEY_SECRET", "SCALEDOWN_DEBUG": "true", "SCALEDOWN_TIMEOUT_SECONDS": "123"}
+        errors = io.StringIO()
         with patch.dict("os.environ", environment, clear=True), patch.object(
             scaledown_provider.requests, "post", return_value=self.response(raw())
-        ) as post, self.assertLogs(scaledown_provider.logger.name, level="INFO") as logs:
+        ) as post, redirect_stderr(errors):
             scaledown_provider.extract_pdf(pdf, CTE_EXTRACTION_SCHEMA)
         self.assertEqual(post.call_count, 1)
         request = post.call_args.kwargs
         self.assertEqual(base64.b64decode(request["json"]["document"]), pdf)
         self.assertEqual(len(request["json"]["document"]), 36)
-        diagnostic = json.loads(logs.output[0].split("[CTE][ScaleDown][Request] ", 1)[1])
+        diagnostic = json.loads(errors.getvalue().split("[CTE][ScaleDown][Request] ", 1)[1])
         self.assertEqual(diagnostic["endpoint"], scaledown_provider.SCALEDOWN_URL)
         self.assertEqual(diagnostic["method"], "POST")
         self.assertEqual(diagnostic["model"], request["json"]["model"])
@@ -68,7 +72,7 @@ class ScaleDownProviderTests(unittest.TestCase):
         self.assertEqual(diagnostic["connect_timeout_seconds"], 123.0)
         self.assertEqual(diagnostic["read_timeout_seconds"], 123.0)
         self.assertEqual(set(diagnostic["header_names"]), {"x-api-key", "Content-Type"})
-        serialized_log = logs.output[0]
+        serialized_log = errors.getvalue()
         for secret in ("API_KEY_SECRET", request["json"]["document"], pdf.decode("ascii")):
             self.assertNotIn(secret, serialized_log)
 
