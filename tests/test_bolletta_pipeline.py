@@ -4,7 +4,8 @@ import types
 import unittest
 from unittest.mock import Mock, patch
 
-from fastapi import HTTPException
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 import upload_pdf
 from auth_service import CurrentUser
@@ -45,6 +46,42 @@ class BillPipelineTests(unittest.TestCase):
         self.assertNotIn("pytesseract", upload_pdf.__dict__)
         self.assertNotIn("convert_from_path", upload_pdf.__dict__)
         self.assertNotIn("estrai_dati_bolletta", upload_pdf.__dict__)
+
+    def test_ordered_photos_become_one_pdf_one_extraction_and_one_comparison(self):
+        photos = [object(), object(), object()]
+        generated_pdf = b"%PDF-generated-from-three-pages"
+        context, slot = self.slot_context()
+        offers = [{"nome_offerta": "Test"}]
+        with patch.object(upload_pdf, "comparison_slot", return_value=context), patch.object(
+            upload_pdf, "prepare_bill_pdf", return_value=generated_pdf
+        ) as prepare, patch.object(
+            upload_pdf, "extract_bolletta", return_value=BILL
+        ) as extract, patch.object(upload_pdf, "confronta_offerte", return_value=offers) as compare:
+            result = asyncio.run(upload_pdf.upload_bolletta(None, USER, photos))
+        self.assertEqual(result, {"bolletta": BILL, "offerte": offers})
+        prepare.assert_called_once_with(None, photos)
+        extract.assert_called_once_with(generated_pdf)
+        compare.assert_called_once()
+        slot.record_success.assert_called_once_with("Luce")
+
+    def test_route_accepts_repeated_images_multipart_field(self):
+        app = FastAPI()
+        app.include_router(upload_pdf.router)
+        app.dependency_overrides[upload_pdf.current_user] = lambda: USER
+        context, _slot = self.slot_context()
+        with patch.object(upload_pdf, "comparison_slot", return_value=context), patch.object(
+            upload_pdf, "prepare_bill_pdf", return_value=b"%PDF-generated"
+        ) as prepare, patch.object(upload_pdf, "extract_bolletta", return_value=BILL), patch.object(
+            upload_pdf, "confronta_offerte", return_value=[]
+        ):
+            response = TestClient(app).post("/upload-bolletta", files=[
+                ("images", ("page-1.jpg", b"first", "image/jpeg")),
+                ("images", ("page-2.webp", b"second", "image/webp")),
+            ])
+        self.assertEqual(response.status_code, 200, response.text)
+        pdf_file, images = prepare.call_args.args
+        self.assertIsNone(pdf_file)
+        self.assertEqual([image.filename for image in images], ["page-1.jpg", "page-2.webp"])
 
     def test_missing_required_field_does_not_call_comparison(self):
         file = types.SimpleNamespace(filename="bill.pdf", file=io.BytesIO(PDF))

@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from auth_service import CurrentUser, current_user
+from bill_document import BillDocumentError, prepare_bill_pdf
 from bolletta_extraction import extract_bolletta
 from confronto import confronta_offerte
 from cte_pipeline import processa_cte
@@ -20,7 +21,6 @@ from scaledown_provider import (
 
 router = APIRouter()
 MAX_CONCURRENT = 2
-MAX_DOCUMENT_PDF_BYTES = 25 * 1024 * 1024
 cte_slots = asyncio.Semaphore(MAX_CONCURRENT)
 
 
@@ -43,17 +43,15 @@ async def upload_cte_pdf(file: UploadFile = File(...), user: CurrentUser = Depen
 
 
 @router.post("/upload-bolletta")
-async def upload_bolletta(file: UploadFile = File(...), user: CurrentUser = Depends(current_user)):
-    if not (file.filename or "").lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Il file deve essere un PDF")
+async def upload_bolletta(
+    file: UploadFile | None = File(None),
+    user: CurrentUser = Depends(current_user),
+    images: list[UploadFile] | None = File(None),
+):
     try:
         with comparison_slot(user.tenant_id, user.id) as slot:
-            file.file.seek(0)
-            file_bytes = file.file.read(MAX_DOCUMENT_PDF_BYTES + 1)
-            if len(file_bytes) > MAX_DOCUMENT_PDF_BYTES:
-                raise HTTPException(status_code=413, detail="Il PDF supera il limite di 25 MB")
-            if not file_bytes or b"%PDF-" not in file_bytes[:1024]:
-                raise HTTPException(status_code=422, detail="Il file non contiene un PDF originale valido")
+            image_files = images if isinstance(images, list) else None
+            file_bytes = await run_in_threadpool(prepare_bill_pdf, file, image_files)
             dati = await run_in_threadpool(extract_bolletta, file_bytes)
             required = (
                 "kwh_totali", "mesi_bolletta", "spesa_vendita_energia", "quota_fissa_vendita",
@@ -82,6 +80,8 @@ async def upload_bolletta(file: UploadFile = File(...), user: CurrentUser = Depe
             return {"bolletta": dati, "offerte": offerte}
     except UsageLimitError as error:
         return JSONResponse(status_code=403, content=error.payload())
+    except BillDocumentError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
     except ScaleDownConfigurationError as error:
         emit_error_diagnostic(error)
         raise HTTPException(status_code=503, detail="Servizio ScaleDown non configurato") from error

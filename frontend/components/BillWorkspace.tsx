@@ -1,7 +1,8 @@
 "use client";
 import { useRef, useState } from "react";
-import { ArrowRight, ArrowDownRight, ArrowUpRight, CheckCircle2, Download, FileText, LoaderCircle, ScanLine, Zap } from "lucide-react";
+import { ArrowRight, ArrowDownRight, ArrowUpRight, CheckCircle2, Download, FileImage, FileText, LoaderCircle, ScanLine, Zap } from "lucide-react";
 import UploadZone from "./UploadZone";
+import BillPhotoUpload from "./BillPhotoUpload";
 import { service, errorMessage, euro, number } from "@/lib/api";
 import { readConnection } from "@/lib/connection";
 import type { BillResult } from "@/lib/types";
@@ -12,17 +13,21 @@ function italianDate(value: string | null | undefined): string | null {
 }
 
 export default function BillWorkspace() {
+  const [uploadMode, setUploadMode] = useState<"pdf" | "photos">("pdf");
   const [file, setFile] = useState<File | null>(null);
+  const [photos, setPhotos] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<BillResult | null>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
   async function analyze() {
-    if (!file || lock.current) return;
+    if ((uploadMode === "pdf" ? !file : !photos.length) || lock.current) return;
     lock.current = true; setBusy(true); setError(""); setResult(null);
     try {
-      const form = new FormData(); form.append("file", file);
+      const form = new FormData();
+      if (uploadMode === "pdf" && file) form.append("file", file);
+      if (uploadMode === "photos") photos.forEach(photo => form.append("images", photo));
       const data = await service<BillResult>("upload-bolletta", form);
       if (!data.bolletta || !Array.isArray(data.offerte)) throw new Error("La risposta non contiene una bolletta e un elenco di offerte validi.");
       const required = [data.bolletta.kwh_totali, data.bolletta.mesi_bolletta, data.bolletta.spesa_vendita_energia, data.bolletta.quota_fissa_vendita];
@@ -49,10 +54,19 @@ export default function BillWorkspace() {
   // quota_fissa_vendita is already expressed in EUR/month by extraction.
   const monthly = bill ? bill.spesa_vendita_energia / bill.mesi_bolletta + bill.quota_fissa_vendita : 0;
 
+  function changeMode(mode: "pdf" | "photos") {
+    if (busy) return;
+    setUploadMode(mode); setError(""); setResult(null);
+  }
+
   return <>
-    <div className="work-grid bill-upload-grid"><section className="panel upload-panel"><span className="panel-number">IL TUO PUNTO DI PARTENZA</span><h2>Carica la bolletta</h2><p className="muted">Un PDF è tutto ciò che serve per iniziare il confronto.</p>
-      <UploadZone file={file} disabled={busy} onChange={chosen => { setFile(chosen); setError(""); setResult(null); }} label="Trascina qui la tua bolletta" />
-      <button className="button primary full" disabled={!file || busy} onClick={() => void analyze()}>{busy ? <><LoaderCircle className="spin" size={18} /> Analisi e confronto in corso…</> : <>Analizza e confronta <ArrowRight size={18} /></>}</button>
+    <div className="mode-switch" role="tablist" aria-label="Modalità caricamento bolletta">
+      <button type="button" role="tab" aria-selected={uploadMode === "pdf"} disabled={busy} onClick={() => changeMode("pdf")}><FileText size={17} /> Carica PDF</button>
+      <button type="button" role="tab" aria-selected={uploadMode === "photos"} disabled={busy} onClick={() => changeMode("photos")}><FileImage size={17} /> Carica fotografie</button>
+    </div>
+    <div className="work-grid bill-upload-grid"><section className="panel upload-panel"><span className="panel-number">IL TUO PUNTO DI PARTENZA</span><h2>Carica la bolletta</h2><p className="muted">{uploadMode === "pdf" ? "Carica il PDF originale della bolletta." : "Fotografa tutte le pagine oppure sceglile dalla galleria, poi controlla il loro ordine."}</p>
+      {uploadMode === "pdf" ? <UploadZone file={file} disabled={busy} onChange={chosen => { setFile(chosen); setError(""); setResult(null); }} label="Trascina qui la tua bolletta" /> : <BillPhotoUpload files={photos} disabled={busy} onChange={chosen => { setPhotos(chosen); setError(""); setResult(null); }} />}
+      <button className="button primary full" disabled={(uploadMode === "pdf" ? !file : !photos.length) || busy} onClick={() => void analyze()}>{busy ? <><LoaderCircle className="spin" size={18} /> Analisi e confronto in corso…</> : <>{uploadMode === "photos" ? "Analizza bolletta" : "Analizza e confronta"} <ArrowRight size={18} /></>}</button>
       {busy && <p className="processing-message" role="status">Stiamo leggendo il documento e cercando le offerte. L’operazione può richiedere qualche minuto.</p>}
       {error && <div className="alert error" role="alert">{error}</div>}
     </section>
