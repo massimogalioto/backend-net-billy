@@ -1,11 +1,12 @@
 "use client";
 import { useRef, useState } from "react";
-import { ArrowRight, CheckCircle2, Database, FileCheck2, FolderOpen, LoaderCircle } from "lucide-react";
+import { ArrowRight, CheckCircle2, Coins, Database, FileCheck2, FolderOpen, LoaderCircle } from "lucide-react";
 import UploadZone from "./UploadZone";
 import CaricamentoMassivoCTE from "@/CaricamentoMassivoCTE";
 import { service, errorMessage } from "@/lib/api";
 import { directConnection, readConnection } from "@/lib/connection";
 import type { Offerta } from "@/lib/types";
+import CommissionManager from "./CommissionManager";
 
 const empty: Offerta = { fornitore: "", nome_offerta: "", tipologia_cliente: "", tariffa: "", prezzo_kwh: null, spread: null, costo_fisso: null, valid_from: null, valid_until: null, fonte_cte: "", vincoli: "", notes: "", tipo_fornitura: "" };
 const numeric = new Set(["prezzo_kwh", "spread", "costo_fisso"]);
@@ -66,6 +67,7 @@ export default function CteWorkspace() {
     <div className="mode-switch" role="tablist" aria-label="Modalità caricamento CTE">
       <button id="single-tab" role="tab" aria-selected={mode === "single"} aria-controls="single-panel" disabled={!!busy || batchBusy} onClick={() => setMode("single")}><FileCheck2 size={18} /> CTE singola</button>
       <button id="batch-tab" role="tab" aria-selected={mode === "batch"} aria-controls="batch-panel" disabled={!!busy || batchBusy} onClick={() => setMode("batch")}><FolderOpen size={18} /> Caricamento massivo</button>
+      <button id="commissions-tab" role="tab" aria-selected={mode === "commissions"} aria-controls="commissions-panel" disabled={!!busy || batchBusy} onClick={() => setMode("commissions")}><Coins size={18} /> Gestisci provvigioni</button>
     </div>
     <div id="single-panel" role="tabpanel" aria-labelledby="single-tab" hidden={mode !== "single"}>
       <div className="work-grid"><section className="panel upload-panel"><span className="panel-number">PASSO 01</span><h2>Carica il documento</h2><p className="muted">Seleziona le condizioni tecnico economiche dell’offerta.</p>
@@ -86,6 +88,7 @@ export default function CteWorkspace() {
       </section></div>
     </div>
     <div id="batch-panel" role="tabpanel" aria-labelledby="batch-tab" hidden={mode !== "batch"} className="panel batch-panel"><CaricamentoMassivoCTE baseUrl={directConnection ? readConnection().url : "/api/service"} onRunningChange={setBatchBusy} /></div>
+    <div id="commissions-panel" role="tabpanel" aria-labelledby="commissions-tab" hidden={mode !== "commissions"} className="panel batch-panel"><CommissionManager /></div>
     {error && <div className="alert error" role="alert">{error}</div>}
   </>;
 }

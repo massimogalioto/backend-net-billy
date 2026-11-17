@@ -1,7 +1,21 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { Item, runBatch, selectPdfs } from "./cte-batch";
 
-afterEach(() => vi.unstubAllGlobals());
+class FileReaderMock {
+  result: string | ArrayBuffer | null = null;
+  onerror: (() => void) | null = null;
+  onload: (() => void) | null = null;
+  readAsDataURL() {
+    this.result = "data:application/pdf;base64,cGRm";
+    this.onload?.();
+  }
+}
+
+vi.stubGlobal("FileReader", FileReaderMock);
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.stubGlobal("FileReader", FileReaderMock);
+});
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 const offer = { fornitore: "Test", nome_offerta: "Test" };
 

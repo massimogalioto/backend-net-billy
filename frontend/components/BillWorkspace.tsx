@@ -1,11 +1,12 @@
 "use client";
 import { useRef, useState } from "react";
-import { ArrowRight, ArrowDownRight, ArrowUpRight, CheckCircle2, Download, FileImage, FileText, LoaderCircle, ScanLine, Zap } from "lucide-react";
+import { ArrowRight, ArrowDownRight, ArrowUpRight, CheckCircle2, Coins, Download, FileImage, FileText, LoaderCircle, ScanLine, Zap } from "lucide-react";
 import UploadZone from "./UploadZone";
 import BillPhotoUpload from "./BillPhotoUpload";
 import { service, errorMessage, euro, number } from "@/lib/api";
 import { readConnection } from "@/lib/connection";
 import type { BillResult } from "@/lib/types";
+import CommissionModal from "./CommissionModal";
 
 function italianDate(value: string | null | undefined): string | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value ?? "");
@@ -20,10 +21,11 @@ export default function BillWorkspace() {
   const lock = useRef(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<BillResult | null>(null);
+  const [commissionsOpen, setCommissionsOpen] = useState(false);
   const resultsRef = useRef<HTMLDivElement>(null);
   async function analyze() {
     if ((uploadMode === "pdf" ? !file : !photos.length) || lock.current) return;
-    lock.current = true; setBusy(true); setError(""); setResult(null);
+    lock.current = true; setBusy(true); setError(""); setResult(null); setCommissionsOpen(false);
     try {
       const form = new FormData();
       if (uploadMode === "pdf" && file) form.append("file", file);
@@ -77,7 +79,7 @@ export default function BillWorkspace() {
         <div className="stat-grid"><div><span>Consumi del periodo</span><strong>{number(bill.kwh_totali)} <small>{unit}</small></strong></div><div><span>Periodo di fatturazione</span><strong>{number(bill.mesi_bolletta)} <small>mesi</small></strong></div><div><span>Spesa vendita energia</span><strong>{euro(bill.spesa_vendita_energia)}</strong></div><div><span>Spesa mensile confrontata</span><strong className="amber-text">{euro(monthly)}</strong></div></div>
         <div className="summary-foot"><span>POD / PDR: {bill.pod || "Non rilevato"}</span><span>Quota fissa commerciale: {euro(bill.quota_fissa_vendita)}/mese</span></div>
       </section>
-      <div className="offers-title"><h3>Offerte a confronto <span>{result.offerte.length}</span></h3><p>Ordinate per costo mensile stimato, dal più basso.</p></div>
+      <div className="offers-title"><div><h3>Offerte a confronto <span>{result.offerte.length}</span></h3><p>Ordinate per costo mensile stimato, dal più basso.</p></div>{result.offerte.length > 0 && result.offerte.every(offer => offer.id) && <button className="button outline" onClick={() => setCommissionsOpen(true)}><Coins size={16} /> Mostra tutte le provvigioni</button>}</div>
       {!result.offerte.length ? <div className="panel empty-state"><FileText size={36} /><h3>Nessuna offerta disponibile</h3><p>Non sono state trovate offerte per questa fornitura e tipologia di cliente. Verifica le offerte archiviate e la loro validità.</p></div> : <div className="offers-grid">{result.offerte.map((offer, index) => {
         const saving = offer.risparmio_annuo > 0;
         const extraCost = offer.risparmio_annuo < 0;
@@ -93,6 +95,7 @@ export default function BillWorkspace() {
       })}</div>}
       <p className="comparison-note">Le stime usano i consumi e i parametri restituiti dal servizio. Imposte, oneri e trasporto non sono inclusi. Per tariffe variabili, il prezzo dipende anche dall’indice di mercato.</p>
       <details className="json-details"><summary>Visualizza la risposta JSON completa</summary><pre>{JSON.stringify(result, null, 2)}</pre></details>
+      {commissionsOpen && <CommissionModal offers={result.offerte} onClose={() => setCommissionsOpen(false)} />}
     </div>}
   </>;
 }

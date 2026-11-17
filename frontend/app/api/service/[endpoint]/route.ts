@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
-const allowed = new Set(["upload-cte", "upload-bolletta", "salva-offerta", "salva-offerta-manuale", "confronta", "market-prices-psv"]);
+const allowed = new Set(["upload-cte", "upload-bolletta", "salva-offerta", "salva-offerta-manuale", "confronta", "market-prices-psv", "cte-commissions-query", "cte-commissions-replace", "cte-commissions-remove"]);
+const backendPath: Record<string, string> = { "cte-commissions-query": "cte-commissions/query", "cte-commissions-replace": "cte-commissions/replace", "cte-commissions-remove": "cte-commissions/remove" };
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 export async function GET(request: NextRequest, context: { params: Promise<{ endpoint: string }> }) {
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ en
       body = JSON.stringify(await request.json());
       headers.set("Content-Type", "application/json");
     }
-    const backend = await fetch(`${process.env.BACKEND_URL.replace(/\/$/, "")}/${endpoint}`, { method: "POST", headers, body, signal: controller.signal, cache: "no-store" });
+    const backend = await fetch(`${process.env.BACKEND_URL.replace(/\/$/, "")}/${backendPath[endpoint] ?? endpoint}`, { method: "POST", headers, body, signal: controller.signal, cache: "no-store" });
     const raw = await backend.text();
     let data: unknown;
     try { data = JSON.parse(raw); }

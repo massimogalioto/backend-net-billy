@@ -22,10 +22,13 @@ function render(annual: number, monthly: number) {
       risparmio_annuo: annual, percentuale: 18.51, tipo_differenza: "Risparmio" }],
   };
   vi.mocked(useState)
+    .mockImplementationOnce(() => ["pdf", vi.fn()])
     .mockImplementationOnce(() => [null, vi.fn()])
+    .mockImplementationOnce(() => [[], vi.fn()])
     .mockImplementationOnce(() => [false, vi.fn()])
     .mockImplementationOnce(() => ["", vi.fn()])
-    .mockImplementationOnce(() => [result, vi.fn()]);
+    .mockImplementationOnce(() => [result, vi.fn()])
+    .mockImplementationOnce(() => [false, vi.fn()]);
   const html = renderToStaticMarkup(createElement(BillWorkspace));
   const text = html.replace(/<[^>]*>/g, "").replace(/\s+/g, " ");
   return { html, text };
