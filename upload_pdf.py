@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import date
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -22,6 +23,7 @@ from scaledown_provider import (
 router = APIRouter()
 MAX_CONCURRENT = 2
 cte_slots = asyncio.Semaphore(MAX_CONCURRENT)
+logger = logging.getLogger("uvicorn.error")
 
 
 def data_oggi_iso():
@@ -108,4 +110,8 @@ async def upload_bolletta(
     except HTTPException:
         raise
     except Exception as error:
+        logger.exception(
+            "Unhandled exception in POST /upload-bolletta exception_type=%s",
+            type(error).__name__,
+        )
         raise HTTPException(status_code=500, detail="Errore durante l'elaborazione della bolletta") from error
