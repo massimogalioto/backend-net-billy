@@ -8,7 +8,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import upload_pdf
+import bolletta_extraction as bill_extraction
 from auth_service import CurrentUser
+from scaledown_provider import ScaleDownEntities
 
 
 PDF = b"%PDF-1.7 original-bill"
@@ -94,6 +96,28 @@ class BillPipelineTests(unittest.TestCase):
         self.assertEqual(result["mancanti"], ["spesa_vendita_energia"])
         self.assertIsNone(result["output_ai"]["spesa_vendita_energia"])
         compare.assert_not_called()
+
+    def test_fallback_still_accounts_for_only_one_comparison(self):
+        file = types.SimpleNamespace(filename="a2a.pdf", file=io.BytesIO(PDF))
+        context, slot = self.slot_context()
+        recovered = ScaleDownEntities([
+            {"type": "kwh_totali", "text": "299"},
+            {"type": "mesi_bolletta", "text": "2"},
+            {"type": "spesa_vendita_energia", "text": "86,24"},
+            {"type": "quota_fissa_vendita", "text": "5,06"},
+            {"type": "periodicita_quota_fissa", "text": "Totale periodo"},
+            {"type": "tipo_fornitura", "text": "Energia elettrica"},
+            {"type": "tipologia_cliente", "text": "Altri Usi"},
+            {"type": "potenza_kw", "text": "3"},
+        ], 10)
+        with patch.object(upload_pdf, "comparison_slot", return_value=context), patch.object(
+            bill_extraction, "extract_pdf", side_effect=[ScaleDownEntities([], 5), recovered]
+        ) as provider, patch.object(upload_pdf, "confronta_offerte", return_value=[{"nome_offerta": "Test"}]) as compare:
+            result = asyncio.run(upload_pdf.upload_bolletta(file, USER))
+        self.assertEqual(provider.call_count, 2)
+        compare.assert_called_once()
+        slot.record_success.assert_called_once_with("Luce")
+        self.assertEqual(result["bolletta"]["quota_fissa_vendita"], 2.53)
 
 
 if __name__ == "__main__":

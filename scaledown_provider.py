@@ -100,7 +100,7 @@ def _log_request_debug(payload: dict, headers: dict, file_bytes: bytes,
     )
 
 
-def extract_pdf(file_bytes: bytes, entities: dict[str, str]) -> list[dict]:
+def extract_pdf(file_bytes: bytes, entities: dict[str, str], instruction: str | None = None) -> list[dict]:
     api_key = os.getenv("SCALEDOWN_API_KEY")
     if not api_key:
         raise ScaleDownConfigurationError(
@@ -108,7 +108,7 @@ def extract_pdf(file_bytes: bytes, entities: dict[str, str]) -> list[dict]:
         )
     payload = {
         "model": "extract",
-        "messages": [{"role": "user", "content": "Extract the requested entities from the PDF without inventing missing values."}],
+        "messages": [{"role": "user", "content": instruction or "Extract the requested entities from the PDF without inventing missing values."}],
         "entities": entities,
         "document": base64.b64encode(file_bytes).decode("ascii"),
         "document_mime_type": "application/pdf",

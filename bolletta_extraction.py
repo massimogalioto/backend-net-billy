@@ -1,10 +1,12 @@
 """Dedicated ScaleDown entity extraction and normalization for energy bills."""
+import json
 import re
+import sys
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from scaledown_provider import ScaleDownResponseError, extract_pdf
+from scaledown_provider import ScaleDownError, ScaleDownResponseError, extract_pdf
 
 
 BOLLETTA_ENTITIES = {
@@ -21,6 +23,17 @@ BOLLETTA_ENTITIES = {
     "tipologia_cliente": "Identifica Residenziale oppure Business dalla tipologia contrattuale o d'uso. Domestico è Residenziale; altri usi, non domestico o impresa sono Business. Non usare semplicemente la presenza di dati aziendali.",
     "potenza_kw": "Potenza contrattualmente impegnata in kW. Non usare potenza disponibile, picchi o potenza misurata.",
 }
+
+# Additional guidance for ARERA's "Scontrino dell'energia" layout. Existing
+# entity names and the external JSON contract remain unchanged.
+BOLLETTA_ENTITIES.update({
+    "kwh_totali": "Consumo totale fatturato nel solo periodo: kWh per Luce o Smc per Gas. Nello Scontrino dell'energia cerca prima 'Consumo totale fatturato' o 'Totale consumo fatturato di energia attiva'. Non usare il consumo annuo storico, letture, periodi diversi o ricalcoli duplicati.",
+    "mesi_bolletta": "Numero di mesi coperti dal periodo di fatturazione, ricavato dalle date reali. Nello Scontrino dell'energia non usare l'intervallo del consumo annuo. Non assumere automaticamente due mesi.",
+    "spesa_vendita_energia": "Importo totale del periodo della sola vendita energia per consumi. Nello Scontrino dell'energia usa 'di cui spesa per la vendita di energia elettrica' dentro 'Quota per consumi'. Non usare la quota consumi complessiva se include rete/oneri e non usare il totale vendita dell'offerta se include la quota fissa. Mai totale fattura, prezzo unitario, rete, oneri o quota fissa.",
+    "quota_fissa_vendita": "Importo della sola quota fissa commerciale di vendita, CCV/PCV o equivalente. Nello Scontrino dell'energia cerca 'di cui spesa per la vendita' dentro 'Quota fissa e Quota Potenza'. Escludi rete, oneri e quota potenza; indica separatamente se l'importo è mensile, totale del periodo o annuale.",
+    "tipologia_cliente": "Identifica Residenziale oppure Business dalla tipologia contrattuale o d'uso. Domestico è Residenziale; Micro Imprese, Altri Usi, non domestico o impresa sono Business. Non presumere Residenziale solo perché la fornitura è elettrica.",
+    "tipo_fornitura": "Identifica Luce oppure Gas dalla fornitura corrente. Energia Elettrica è Luce; Gas Naturale è Gas. Usa POD/PDR e unità di consumo come conferma e ignora offerte pubblicizzate.",
+})
 
 
 class BollettaExtraction(BaseModel):
@@ -41,12 +54,34 @@ class BollettaExtraction(BaseModel):
 _SUPPLY_ALIASES = {"luce": "Luce", "energia elettrica": "Luce", "gas": "Gas", "gas naturale": "Gas"}
 _CUSTOMER_ALIASES = {
     "residenziale": "Residenziale", "domestico": "Residenziale", "business": "Business",
-    "impresa": "Business", "altri usi": "Business", "non domestico": "Business",
+    "impresa": "Business", "micro imprese": "Business", "altri usi": "Business",
+    "non domestico": "Business",
 }
 _FIXED_PERIOD_ALIASES = {
     "mensile": "Mensile", "ogni mese": "Mensile", "totale periodo": "Totale periodo",
     "periodo": "Totale periodo", "annuale": "Annuale", "annuo": "Annuale",
 }
+_REQUIRED_FIELDS = (
+    "kwh_totali", "mesi_bolletta", "spesa_vendita_energia", "quota_fissa_vendita",
+    "tipo_fornitura", "tipologia_cliente",
+)
+_FALLBACK_INSTRUCTION = (
+    "Recover only the requested missing bill entities from the same PDF without inventing values. "
+    "For an ARERA Scontrino dell'energia, use total billed consumption for the billing period, not annual history; "
+    "derive months from billing-period dates; use the sales-energy subitem inside Quota per consumi, excluding "
+    "network charges and fixed fees; find the sales fixed-fee subitem inside Quota fissa e Quota Potenza and state "
+    "whether it is monthly, total-period or annual; classify Micro Imprese, Altri Usi and non-domestic use as "
+    "Business; classify Energia Elettrica as Luce and Gas Naturale as Gas. Return no unsupported values."
+)
+
+
+def _log_extraction(event: str, **details) -> None:
+    print(
+        "[ScaleDown][BillExtraction] " + json.dumps(
+            {"event": event, **details}, ensure_ascii=False, separators=(",", ":")
+        ),
+        file=sys.stderr, flush=True,
+    )
 
 
 def _entity_values(entities: list[dict]) -> dict:
@@ -105,8 +140,7 @@ def _validation_error(error: ValidationError, duration_ms):
     ) from error
 
 
-def extract_bolletta(file_bytes: bytes) -> dict:
-    entities = extract_pdf(file_bytes, BOLLETTA_ENTITIES)
+def _normalize_entities(entities: list[dict]) -> dict:
     values = _entity_values(entities)
     months_number = _number(values.get("mesi_bolletta"))
     months = int(months_number) if months_number is not None and months_number > 0 and months_number.is_integer() else None
@@ -138,3 +172,41 @@ def extract_bolletta(file_bytes: bytes) -> dict:
         return BollettaExtraction.model_validate(normalized).model_dump()
     except ValidationError as error:
         _validation_error(error, getattr(entities, "duration_ms", None))
+
+
+def _fallback_entities(missing: list[str]) -> dict[str, str]:
+    requested = {field: BOLLETTA_ENTITIES[field] for field in missing}
+    if "spesa_vendita_energia" in missing:
+        requested["spesa_materia_energia"] = BOLLETTA_ENTITIES["spesa_materia_energia"]
+    if "quota_fissa_vendita" in missing:
+        requested["periodicita_quota_fissa"] = BOLLETTA_ENTITIES["periodicita_quota_fissa"]
+    return requested
+
+
+def extract_bolletta(file_bytes: bytes) -> dict:
+    first = _normalize_entities(extract_pdf(file_bytes, BOLLETTA_ENTITIES))
+    missing = [field for field in _REQUIRED_FIELDS if first.get(field) is None]
+    _log_extraction("first_completed", complete=not missing, missing_fields=missing, calls=1)
+    if not missing:
+        return first
+
+    _log_extraction("fallback_started", missing_fields=missing, calls=2)
+    recovery_fields = [*missing]
+    if first.get("potenza_kw") is None:
+        recovery_fields.append("potenza_kw")
+    try:
+        second = _normalize_entities(extract_pdf(
+            file_bytes, _fallback_entities(recovery_fields), instruction=_FALLBACK_INSTRUCTION
+        ))
+    except ScaleDownError as error:
+        _log_extraction("fallback_error", category=error.category, calls=2)
+        raise
+
+    for field in recovery_fields:
+        if first.get(field) is None and second.get(field) is not None:
+            first[field] = second[field]
+    if first.get("spesa_materia_energia") is None and first.get("spesa_vendita_energia") is not None:
+        first["spesa_materia_energia"] = first["spesa_vendita_energia"]
+    remaining = [field for field in _REQUIRED_FIELDS if first.get(field) is None]
+    _log_extraction("fallback_completed", complete=not remaining, missing_fields=remaining, calls=2)
+    return first
