@@ -17,7 +17,8 @@ class ScaleDownError(RuntimeError):
     def __init__(self, message: str, *, category: str, status_code: int | None = None,
                  endpoint: str = SCALEDOWN_URL, duration_ms: int | None = None,
                  error_code: str | None = None, invalid_fields: tuple[str, ...] = (),
-                 validation_errors: tuple[tuple[str, str], ...] = ()):
+                 validation_errors: tuple[tuple[str, str], ...] = (),
+                 diagnostic_id: str | None = None, diagnostic_code: str | None = None):
         super().__init__(message)
         self.category = category
         self.status_code = status_code
@@ -26,6 +27,8 @@ class ScaleDownError(RuntimeError):
         self.error_code = error_code
         self.invalid_fields = invalid_fields
         self.validation_errors = validation_errors
+        self.diagnostic_id = diagnostic_id
+        self.diagnostic_code = diagnostic_code or _diagnostic_code(category)
         self.started_at = None
         self.connect_timeout_seconds = None
         self.read_timeout_seconds = None
@@ -48,6 +51,14 @@ class ScaleDownEntities(list):
     def __init__(self, values: list[dict], duration_ms: int):
         super().__init__(values)
         self.duration_ms = duration_ms
+
+
+def _diagnostic_code(category: str) -> str:
+    return {
+        "http": "API_ERROR", "network": "API_ERROR", "configuration": "API_ERROR",
+        "timeout": "TIMEOUT", "response_format": "INVALID_RESPONSE",
+        "validation": "INVALID_FIELD",
+    }.get(category, "INTERNAL_ERROR")
 
 
 def _duration_ms(started_at: float) -> int:
@@ -100,7 +111,8 @@ def _log_request_debug(payload: dict, headers: dict, file_bytes: bytes,
     )
 
 
-def extract_pdf(file_bytes: bytes, entities: dict[str, str], instruction: str | None = None) -> list[dict]:
+def extract_pdf(file_bytes: bytes, entities: dict[str, str], instruction: str | None = None,
+                diagnostic_id: str | None = None, attempt: int = 1) -> list[dict]:
     api_key = os.getenv("SCALEDOWN_API_KEY")
     if not api_key:
         raise ScaleDownConfigurationError(
@@ -197,11 +209,28 @@ def extract_pdf(file_bytes: bytes, entities: dict[str, str], instruction: str | 
             "type": item["type"], "text": item["text"], "confidence": confidence,
             "start": item.get("start"), "end": item.get("end"), "context": item.get("context"),
         })
-    return ScaleDownEntities(parsed, _duration_ms(started_at))
+    duration_ms = _duration_ms(started_at)
+    safe_names = sorted({
+        item["type"] for item in parsed
+        if re.fullmatch(r"[A-Za-z0-9_]{1,100}", item["type"])
+    })
+    if diagnostic_id is not None:
+        print(
+            "[ScaleDown][Response] " + json.dumps({
+                "diagnostic_id": diagnostic_id, "attempt": attempt,
+                "status": response.status_code, "duration_ms": duration_ms,
+                "requested_count": len(entities), "received_count": len(parsed),
+                "entity_names": safe_names,
+            }, ensure_ascii=False, separators=(",", ":")),
+            file=sys.stderr, flush=True,
+        )
+    return ScaleDownEntities(parsed, duration_ms)
 
 
 def emit_error_diagnostic(error: ScaleDownError) -> None:
     diagnostic = {
+        "diagnostic_id": error.diagnostic_id,
+        "diagnostic_code": error.diagnostic_code,
         "endpoint": error.endpoint,
         "category": error.category,
         "status": error.status_code,

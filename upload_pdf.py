@@ -61,6 +61,7 @@ async def upload_bolletta(
             if missing:
                 return {
                     "errore": "Campo mancante nella risposta AI",
+                    "diagnostic_id": getattr(dati, "diagnostic_id", None),
                     "mancanti": missing,
                     "output_ai": dati,
                 }
@@ -84,13 +85,26 @@ async def upload_bolletta(
         raise HTTPException(status_code=error.status_code, detail=error.detail) from error
     except ScaleDownConfigurationError as error:
         emit_error_diagnostic(error)
-        raise HTTPException(status_code=503, detail="Servizio ScaleDown non configurato") from error
+        headers = {"X-Diagnostic-ID": error.diagnostic_id} if error.diagnostic_id else None
+        raise HTTPException(
+            status_code=503, detail="Servizio ScaleDown non disponibile", headers=headers
+        ) from error
     except ScaleDownTimeoutError as error:
         emit_error_diagnostic(error)
-        raise HTTPException(status_code=504, detail="Timeout durante l'estrazione del PDF") from error
+        headers = {"X-Diagnostic-ID": error.diagnostic_id} if error.diagnostic_id else None
+        raise HTTPException(
+            status_code=504, detail="Timeout durante l'estrazione del PDF", headers=headers
+        ) from error
     except ScaleDownError as error:
         emit_error_diagnostic(error)
-        raise HTTPException(status_code=502, detail="Estrazione ScaleDown fallita") from error
+        if error.category == "response_format":
+            detail = "Risposta ScaleDown strutturalmente non valida"
+        elif error.category == "validation":
+            detail = "Campo della bolletta non normalizzabile"
+        else:
+            detail = "Servizio ScaleDown non disponibile"
+        headers = {"X-Diagnostic-ID": error.diagnostic_id} if error.diagnostic_id else None
+        raise HTTPException(status_code=502, detail=detail, headers=headers) from error
     except HTTPException:
         raise
     except Exception as error:

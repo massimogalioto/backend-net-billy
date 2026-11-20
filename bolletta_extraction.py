@@ -2,6 +2,7 @@
 import json
 import re
 import sys
+import uuid
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -24,14 +25,14 @@ BOLLETTA_ENTITIES = {
     "potenza_kw": "Potenza contrattualmente impegnata in kW. Non usare potenza disponibile, picchi o potenza misurata.",
 }
 
-# Additional guidance for ARERA's "Scontrino dell'energia" layout. Existing
-# entity names and the external JSON contract remain unchanged.
+# The same semantic prompt is used for every supplier and layout. Entity names
+# and the external JSON contract remain unchanged.
 BOLLETTA_ENTITIES.update({
-    "kwh_totali": "Consumo totale fatturato nel solo periodo: kWh per Luce o Smc per Gas. Nello Scontrino dell'energia cerca prima 'Consumo totale fatturato' o 'Totale consumo fatturato di energia attiva'. Non usare il consumo annuo storico, letture, periodi diversi o ricalcoli duplicati.",
-    "mesi_bolletta": "Numero di mesi coperti dal periodo di fatturazione, ricavato dalle date reali. Nello Scontrino dell'energia non usare l'intervallo del consumo annuo. Non assumere automaticamente due mesi.",
-    "spesa_vendita_energia": "Importo totale del periodo della sola vendita energia per consumi. Nello Scontrino dell'energia usa 'di cui spesa per la vendita di energia elettrica' dentro 'Quota per consumi'. Non usare la quota consumi complessiva se include rete/oneri e non usare il totale vendita dell'offerta se include la quota fissa. Mai totale fattura, prezzo unitario, rete, oneri o quota fissa.",
-    "quota_fissa_vendita": "Importo della sola quota fissa commerciale di vendita, CCV/PCV o equivalente. Nello Scontrino dell'energia cerca 'di cui spesa per la vendita' dentro 'Quota fissa e Quota Potenza'. Escludi rete, oneri e quota potenza; indica separatamente se l'importo è mensile, totale del periodo o annuale.",
-    "tipologia_cliente": "Identifica Residenziale oppure Business dalla tipologia contrattuale o d'uso. Domestico è Residenziale; Micro Imprese, Altri Usi, non domestico o impresa sono Business. Non presumere Residenziale solo perché la fornitura è elettrica.",
+    "kwh_totali": "Consumo totale fatturato nel solo periodo: kWh per Luce o Smc per Gas. Cercalo nel riepilogo, nello scontrino dell'energia, nel dettaglio dei corrispettivi e nelle caratteristiche della fornitura. Mantieni valore e unità originali. Non usare consumo annuo storico, letture, periodi diversi o ricalcoli duplicati.",
+    "mesi_bolletta": "Numero di mesi del periodo fatturato, ricavato dalle date reali presenti nelle sezioni pertinenti. Gennaio-febbraio vale 2 e un solo mese vale 1. Non usare l'intervallo del consumo annuo e non assumere automaticamente due mesi.",
+    "spesa_vendita_energia": "Importo totale del periodo della sola vendita energia per consumi. Cercalo nel riepilogo, scontrino dell'energia, box offerta, dettaglio corrispettivi o quota consumi e preferisci la sottovoce di vendita specifica. Mai totale fattura, totale vendita comprensivo di quota fissa, quota consumi composta, prezzo unitario, rete od oneri. Mantieni il valore originale; usa relazioni aritmetiche solo per verificare la voce, mai per inventarla o sottrarla.",
+    "quota_fissa_vendita": "Importo della sola quota fissa commerciale di vendita, CCV/PCV o equivalente. Cercalo nel box offerta, dettaglio corrispettivi o quota fissa e potenza. Escludi rete, oneri e quota potenza. Restituisci l'importo esplicito senza conversioni e non duplicarlo se è già compreso in un totale vendita.",
+    "tipologia_cliente": "Identifica Residenziale oppure Business dalla tipologia contrattuale o d'uso in tutte le sezioni pertinenti. Domestico è Residenziale; Micro Imprese, Altri Usi, non domestico o impresa sono Business. Non presumere la tipologia dalla sola presenza di dati aziendali.",
     "tipo_fornitura": "Identifica Luce oppure Gas dalla fornitura corrente. Energia Elettrica è Luce; Gas Naturale è Gas. Usa POD/PDR e unità di consumo come conferma e ignora offerte pubblicizzate.",
 })
 
@@ -49,6 +50,14 @@ class BollettaExtraction(BaseModel):
     tipo_fornitura: Literal["Luce", "Gas"] | None = None
     tipologia_cliente: Literal["Residenziale", "Business"] | None = None
     potenza_kw: float | None = None
+
+
+class BollettaExtractionResult(dict):
+    """Internal result metadata; serialized success fields stay unchanged."""
+
+    def __init__(self, values: dict, diagnostic_id: str):
+        super().__init__(values)
+        self.diagnostic_id = diagnostic_id
 
 
 _SUPPLY_ALIASES = {"luce": "Luce", "energia elettrica": "Luce", "gas": "Gas", "gas naturale": "Gas"}
@@ -84,16 +93,19 @@ def _log_extraction(event: str, **details) -> None:
     )
 
 
-def _entity_values(entities: list[dict]) -> dict:
+def _entity_values(entities: list[dict]) -> tuple[dict, list[str]]:
     selected: dict[str, str] = {}
+    unknown: set[str] = set()
     for entity in entities:
         field = entity["type"].strip()
         if field not in BOLLETTA_ENTITIES:
+            if re.fullmatch(r"[A-Za-z0-9_]{1,100}", field):
+                unknown.add(field)
             continue
         text = entity["text"].strip()
         if text and field not in selected:
             selected[field] = text
-    return selected
+    return selected, sorted(unknown)
 
 
 def _number(value):
@@ -140,10 +152,13 @@ def _validation_error(error: ValidationError, duration_ms):
     ) from error
 
 
-def _normalize_entities(entities: list[dict]) -> dict:
-    values = _entity_values(entities)
+def _normalize_entities(entities: list[dict]) -> tuple[dict, list[tuple[str, str]], list[str]]:
+    values, unknown = _entity_values(entities)
+    invalid: list[tuple[str, str]] = []
     months_number = _number(values.get("mesi_bolletta"))
     months = int(months_number) if months_number is not None and months_number > 0 and months_number.is_integer() else None
+    if values.get("mesi_bolletta") is not None and months is None:
+        invalid.append(("mesi_bolletta", "invalid_period"))
     sales = _nonnegative(values.get("spesa_vendita_energia"))
     matter = _nonnegative(values.get("spesa_materia_energia"))
     if sales is None:
@@ -152,6 +167,14 @@ def _normalize_entities(entities: list[dict]) -> dict:
         matter = sales
     fixed_cost = _nonnegative(values.get("quota_fissa_vendita"))
     fixed_period = _choice(values.get("periodicita_quota_fissa"), _FIXED_PERIOD_ALIASES)
+    for field in ("kwh_totali", "spesa_vendita_energia", "spesa_materia_energia", "quota_fissa_vendita", "potenza_kw"):
+        if values.get(field) is not None and _nonnegative(values[field]) is None:
+            invalid.append((field, "invalid_number"))
+    for field, aliases in (("tipo_fornitura", _SUPPLY_ALIASES), ("tipologia_cliente", _CUSTOMER_ALIASES)):
+        if values.get(field) is not None and _choice(values[field], aliases) is None:
+            invalid.append((field, "unknown_classification"))
+    if values.get("periodicita_quota_fissa") is not None and fixed_period is None:
+        invalid.append(("periodicita_quota_fissa", "unknown_periodicity"))
     if fixed_cost is not None:
         if fixed_period == "Totale periodo":
             fixed_cost = fixed_cost / months if months else None
@@ -169,7 +192,8 @@ def _normalize_entities(entities: list[dict]) -> dict:
         "potenza_kw": _nonnegative(values.get("potenza_kw")),
     }
     try:
-        return BollettaExtraction.model_validate(normalized).model_dump()
+        result = BollettaExtraction.model_validate(normalized).model_dump()
+        return result, sorted(set(invalid)), unknown
     except ValidationError as error:
         _validation_error(error, getattr(entities, "duration_ms", None))
 
@@ -184,22 +208,55 @@ def _fallback_entities(missing: list[str]) -> dict[str, str]:
 
 
 def extract_bolletta(file_bytes: bytes) -> dict:
-    first = _normalize_entities(extract_pdf(file_bytes, BOLLETTA_ENTITIES))
+    diagnostic_id = uuid.uuid4().hex
+    try:
+        raw_first = extract_pdf(
+            file_bytes, BOLLETTA_ENTITIES, diagnostic_id=diagnostic_id, attempt=1
+        )
+        first_values, invalid, unknown = _normalize_entities(raw_first)
+    except ScaleDownError as error:
+        error.diagnostic_id = diagnostic_id
+        raise
+    first = BollettaExtractionResult(first_values, diagnostic_id)
     missing = [field for field in _REQUIRED_FIELDS if first.get(field) is None]
-    _log_extraction("first_completed", complete=not missing, missing_fields=missing, calls=1)
+    code = (
+        "EMPTY_ENTITIES" if not raw_first else
+        "UNKNOWN_ENTITIES" if unknown else
+        "INVALID_FIELD" if invalid else
+        "MISSING_REQUIRED" if missing else None
+    )
+    recognized = sorted(set(BOLLETTA_ENTITIES) & {item["type"] for item in raw_first})
+    _log_extraction(
+        "first_completed", diagnostic_id=diagnostic_id, diagnostic_code=code,
+        duration_ms=getattr(raw_first, "duration_ms", None),
+        requested_count=len(BOLLETTA_ENTITIES), received_count=len(raw_first),
+        entity_names=recognized, unknown_entities=unknown,
+        invalid_fields=[{"field": field, "reason": reason} for field, reason in invalid],
+        complete=not missing, missing_fields=missing, calls=1,
+    )
     if not missing:
         return first
 
-    _log_extraction("fallback_started", missing_fields=missing, calls=2)
+    _log_extraction(
+        "fallback_started", diagnostic_id=diagnostic_id,
+        missing_fields=missing, calls=2,
+    )
     recovery_fields = [*missing]
     if first.get("potenza_kw") is None:
         recovery_fields.append("potenza_kw")
     try:
-        second = _normalize_entities(extract_pdf(
-            file_bytes, _fallback_entities(recovery_fields), instruction=_FALLBACK_INSTRUCTION
-        ))
+        requested = _fallback_entities(recovery_fields)
+        raw_second = extract_pdf(
+            file_bytes, requested, instruction=_FALLBACK_INSTRUCTION,
+            diagnostic_id=diagnostic_id, attempt=2,
+        )
+        second, second_invalid, second_unknown = _normalize_entities(raw_second)
     except ScaleDownError as error:
-        _log_extraction("fallback_error", category=error.category, calls=2)
+        error.diagnostic_id = diagnostic_id
+        _log_extraction(
+            "fallback_error", diagnostic_id=diagnostic_id,
+            diagnostic_code=error.diagnostic_code, category=error.category, calls=2,
+        )
         raise
 
     for field in recovery_fields:
@@ -208,5 +265,18 @@ def extract_bolletta(file_bytes: bytes) -> dict:
     if first.get("spesa_materia_energia") is None and first.get("spesa_vendita_energia") is not None:
         first["spesa_materia_energia"] = first["spesa_vendita_energia"]
     remaining = [field for field in _REQUIRED_FIELDS if first.get(field) is None]
-    _log_extraction("fallback_completed", complete=not remaining, missing_fields=remaining, calls=2)
+    code = (
+        "EMPTY_ENTITIES" if not raw_second else
+        "UNKNOWN_ENTITIES" if second_unknown else
+        "INVALID_FIELD" if second_invalid else
+        "MISSING_REQUIRED" if remaining else None
+    )
+    _log_extraction(
+        "fallback_completed", diagnostic_id=diagnostic_id, diagnostic_code=code,
+        duration_ms=getattr(raw_second, "duration_ms", None),
+        requested_count=len(requested), received_count=len(raw_second),
+        unknown_entities=second_unknown,
+        invalid_fields=[{"field": field, "reason": reason} for field, reason in second_invalid],
+        complete=not remaining, missing_fields=remaining, calls=2,
+    )
     return first

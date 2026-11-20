@@ -61,11 +61,27 @@ class ScaleDownProviderTests(unittest.TestCase):
         ), redirect_stderr(errors):
             provider.extract_pdf(PDF, ENTITIES)
         log = errors.getvalue()
-        diagnostic = json.loads(log.split("[ScaleDown][Request] ", 1)[1])
+        request_line = next(line for line in log.splitlines() if line.startswith("[ScaleDown][Request] "))
+        diagnostic = json.loads(request_line.split("[ScaleDown][Request] ", 1)[1])
         self.assertEqual(diagnostic["entities"], ENTITIES)
         self.assertEqual(diagnostic["document"], "[PDF_BASE64_OMESSO]")
         for secret in ("API_KEY_SECRET", base64.b64encode(PDF).decode("ascii"), "private"):
             self.assertNotIn(secret, log)
+
+    def test_response_diagnostic_contains_counts_names_and_request_id_only(self):
+        errors = io.StringIO()
+        extracted = [{"type": "fornitore", "text": "Private Energy", "confidence": 0.9}]
+        with patch.dict("os.environ", {"SCALEDOWN_API_KEY": "key"}, clear=True), patch.object(
+            provider.requests, "post", return_value=response(extracted)
+        ), redirect_stderr(errors):
+            provider.extract_pdf(PDF, ENTITIES, diagnostic_id="diag-1", attempt=2)
+        log = errors.getvalue()
+        self.assertIn('"diagnostic_id":"diag-1"', log)
+        self.assertIn('"attempt":2', log)
+        self.assertIn('"requested_count":2', log)
+        self.assertIn('"received_count":1', log)
+        self.assertIn('"entity_names":["fornitore"]', log)
+        self.assertNotIn("Private Energy", log)
 
     def test_timeout_and_http_errors_are_structured_without_real_calls(self):
         for exception, timeout_type in ((requests.ConnectTimeout("secret"), "connect"),
@@ -77,6 +93,7 @@ class ScaleDownProviderTests(unittest.TestCase):
             ) as raised:
                 provider.extract_pdf(PDF, ENTITIES)
             self.assertEqual(raised.exception.timeout_type, timeout_type)
+            self.assertEqual(raised.exception.diagnostic_code, "TIMEOUT")
         http = Mock(ok=False, status_code=422)
         http.json.return_value = {"error": {"code": "invalid_document", "message": "secret"}}
         with patch.dict("os.environ", {"SCALEDOWN_API_KEY": "key"}), patch.object(
@@ -85,6 +102,7 @@ class ScaleDownProviderTests(unittest.TestCase):
             provider.extract_pdf(PDF, ENTITIES)
         self.assertEqual(raised.exception.status_code, 422)
         self.assertEqual(raised.exception.error_code, "invalid_document")
+        self.assertEqual(raised.exception.diagnostic_code, "API_ERROR")
         self.assertNotIn("secret", repr(vars(raised.exception)))
 
 

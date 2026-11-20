@@ -19,7 +19,10 @@ class BollettaExtractionTests(unittest.TestCase):
         with patch.object(bill, "extract_pdf", return_value=result) as provider:
             extracted = bill.extract_bolletta(b"%PDF-original")
         self.assertEqual(provider.call_count, expected_calls)
-        provider.assert_any_call(b"%PDF-original", bill.BOLLETTA_ENTITIES)
+        first_call = provider.call_args_list[0]
+        self.assertEqual(first_call.args, (b"%PDF-original", bill.BOLLETTA_ENTITIES))
+        self.assertEqual(first_call.kwargs["attempt"], 1)
+        self.assertRegex(first_call.kwargs["diagnostic_id"], r"^[0-9a-f]{32}$")
         return extracted
 
     def test_electricity_bill_preserves_legacy_contract_and_monthly_fixed_cost(self):
@@ -99,6 +102,7 @@ class BollettaExtractionTests(unittest.TestCase):
             "spesa_materia_energia", "periodicita_quota_fissa", "potenza_kw",
         })
         self.assertEqual(fallback_call.kwargs["instruction"], bill._FALLBACK_INSTRUCTION)
+        self.assertEqual(fallback_call.kwargs["attempt"], 2)
 
     def test_partial_first_result_is_preserved_and_only_missing_fields_are_merged(self):
         first = entities(
@@ -147,12 +151,44 @@ class BollettaExtractionTests(unittest.TestCase):
     def test_diagnostics_contain_only_status_field_names_and_call_count(self):
         diagnostic = io.StringIO()
         with patch.object(bill, "extract_pdf", side_effect=[entities(), entities()]), redirect_stderr(diagnostic):
-            bill.extract_bolletta(b"PRIVATE-PDF")
+            extracted = bill.extract_bolletta(b"PRIVATE-PDF")
         log = diagnostic.getvalue()
         self.assertIn('"event":"first_completed"', log)
         self.assertIn('"event":"fallback_completed"', log)
         self.assertIn('"calls":2', log)
         self.assertNotIn("PRIVATE-PDF", log)
+        self.assertRegex(extracted.diagnostic_id, r"^[0-9a-f]{32}$")
+
+    def test_unknown_entity_names_are_reported_only_when_safe_identifiers(self):
+        result = ScaleDownEntities([
+            {"type": "legacy_consumption", "text": "secret amount"},
+            {"type": "customer name: private", "text": "private person"},
+        ], 4)
+        diagnostic = io.StringIO()
+        with patch.object(bill, "extract_pdf", side_effect=[result, result]), redirect_stderr(diagnostic):
+            bill.extract_bolletta(b"PRIVATE-PDF")
+        log = diagnostic.getvalue()
+        self.assertIn('"diagnostic_code":"UNKNOWN_ENTITIES"', log)
+        self.assertIn("legacy_consumption", log)
+        self.assertNotIn("customer name: private", log)
+        self.assertNotIn("secret amount", log)
+        self.assertNotIn("private person", log)
+
+    def test_invalid_number_and_unknown_periodicity_are_diagnostic_not_zero(self):
+        result = entities(
+            kwh_totali="not-a-number", mesi_bolletta="2", spesa_vendita_energia="20",
+            quota_fissa_vendita="5", periodicita_quota_fissa="ogni trimestre",
+            tipo_fornitura="Luce", tipologia_cliente="Business",
+        )
+        diagnostic = io.StringIO()
+        with patch.object(bill, "extract_pdf", side_effect=[result, result]), redirect_stderr(diagnostic):
+            extracted = bill.extract_bolletta(b"PRIVATE-PDF")
+        self.assertIsNone(extracted["kwh_totali"])
+        self.assertIsNone(extracted["quota_fissa_vendita"])
+        log = diagnostic.getvalue()
+        self.assertIn('"reason":"invalid_number"', log)
+        self.assertIn('"reason":"unknown_periodicity"', log)
+        self.assertNotIn("not-a-number", log)
 
 
 if __name__ == "__main__":
