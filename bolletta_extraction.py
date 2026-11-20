@@ -16,10 +16,9 @@ BOLLETTA_ENTITIES = {
     "pod": "Codice POD per energia elettrica oppure PDR per gas. spesso sotto o accanto la scritta 'POD (punto di prelievo)' di solito si trova nella seconda pagina. Restituisci il codice della fornitura corrente.",
     "kwh_totali": "Consumo totale fatturato nel solo periodo: kWh per Luce o Smc per Gas. Non sommare storico, letture, periodi diversi, ricalcoli duplicati o pubblicità.",
     "mesi_bolletta": "Numero di mesi coperti dal periodo fatturato. Ricavalo dalle date reali: gennaio-febbraio vale 2, un solo mese vale 1. potresti trovare anche dal - al in quel caso fai la differenza dei mesi. Non assumere automaticamente due mesi.",
-    "spesa_materia_energia": "Importo totale del periodo in euro della sola vendita energia per consumi, uguale a spesa_vendita_energia. Priorità 1: sottovoce 'di cui spesa per la vendita di energia elettrica' o gas. Priorità 2: equivalenti come componente o spesa vendita energia e componente energia del venditore. Priorità 3: usa spesa materia energia o quota consumi solo se identifica esclusivamente la vendita e non esiste una scomposizione più precisa. Escludi rete, trasporto, distribuzione, oneri, imposte e quota fissa. Se vendita più rete/oneri è circa il totale quota consumi, usa la relazione solo per disambiguare, mai per sottrazione. Esempio: totale 127,06 euro, vendita 105,09 euro, rete/oneri 21,97 euro: estrai 105,09, non 127,06 e non il prezzo unitario 0,228954.",
-    "spesa_vendita_energia": "Importo totale del periodo in euro della sola vendita energia per consumi, uguale a spesa_materia_energia. Priorità 1: sottovoce di cui spesa per la vendita. Priorità 2: equivalente specifico della componente commerciale. Priorità 3: voce generale solo se esclusivamente vendita e senza scomposizione più precisa. Mai totale fattura, totale quota consumi composto, prezzo unitario, rete, oneri o quota fissa. Il controllo vendita più rete/oneri circa uguale al totale serve solo a disambiguare; non calcolare per sottrazione.",
-    "quota_fissa_vendita": "Importo della sola quota fissa commerciale di vendita, CCV/PCV o equivalente. Escludi rete e oneri. Restituisci l'importo esplicito senza conversioni.",
-    "periodicita_quota_fissa": "Indica se l'importo della quota fissa commerciale è Mensile, Totale periodo oppure Annuale. Ometti se non determinabile.",
+    "spesa_vendita_energia": "Importo totale del periodo in euro della sola vendita energia per consumi. Priorità 1: sottovoce di cui spesa per la vendita. Priorità 2: equivalente specifico della componente commerciale. Priorità 3: voce generale solo se esclusivamente vendita e senza scomposizione più precisa. Mai totale fattura, totale quota consumi composto, prezzo unitario, rete, oneri o quota fissa. Il controllo vendita più rete/oneri circa uguale al totale serve solo a disambiguare; non calcolare per sottrazione.",
+    "quota_fissa_vendita": "Importo effettivo della sola quota fissa commerciale di vendita, CCV/PCV o equivalente, preso dalla colonna Importi o Totale. Non confonderlo con il prezzo unitario espresso in euro/mese. Escludi rete e oneri. Restituisci l'importo così scritto, senza conversioni.",
+    "periodicita_quota_fissa": "Periodicità dell'importo effettivamente restituito in quota_fissa_vendita: Mensile se l'importo estratto è il prezzo unitario di un solo mese, Totale periodo se proviene dalla colonna Importi/Totale e copre tutto il periodo fatturato, Annuale solo se l'importo estratto è annuo. Non dedurla dall'unità euro/mese mostrata accanto a un prezzo unitario diverso. Ometti se non determinabile.",
     "tipo_fornitura": "Identifica Luce oppure Gas dall'oggetto della fornitura, POD/PDR e unità di consumo; ignora offerte alternative pubblicizzate.",
     "tipologia_cliente": "Identifica Residenziale oppure Business dalla tipologia contrattuale o d'uso. Domestico è Residenziale; altri usi, non domestico o impresa sono Business. Non usare semplicemente la presenza di dati aziendali.",
     "potenza_kw": "Potenza contrattualmente impegnata in kW. Non usare potenza disponibile, picchi o potenza misurata.",
@@ -31,7 +30,7 @@ BOLLETTA_ENTITIES.update({
     "kwh_totali": "Consumo totale fatturato nel solo periodo: kWh per Luce o Smc per Gas. Cercalo nel riepilogo, nello scontrino dell'energia, nel dettaglio dei corrispettivi e nelle caratteristiche della fornitura. Mantieni valore e unità originali. Non usare consumo annuo storico, letture, periodi diversi o ricalcoli duplicati.",
     "mesi_bolletta": "Numero di mesi del periodo fatturato, ricavato dalle date reali presenti nelle sezioni pertinenti. Gennaio-febbraio vale 2 e un solo mese vale 1. Non usare l'intervallo del consumo annuo e non assumere automaticamente due mesi.",
     "spesa_vendita_energia": "Importo totale del periodo della sola vendita energia per consumi. Cercalo nel riepilogo, scontrino dell'energia, box offerta, dettaglio corrispettivi o quota consumi e preferisci la sottovoce di vendita specifica. Mai totale fattura, totale vendita comprensivo di quota fissa, quota consumi composta, prezzo unitario, rete od oneri. Mantieni il valore originale; usa relazioni aritmetiche solo per verificare la voce, mai per inventarla o sottrarla.",
-    "quota_fissa_vendita": "Importo della sola quota fissa commerciale di vendita, CCV/PCV o equivalente. Cercalo nel box offerta, dettaglio corrispettivi o quota fissa e potenza. Escludi rete, oneri e quota potenza. Restituisci l'importo esplicito senza conversioni e non duplicarlo se è già compreso in un totale vendita.",
+    "quota_fissa_vendita": "Importo effettivo della sola quota fissa commerciale di vendita, CCV/PCV o equivalente. Cercalo nel box offerta, dettaglio corrispettivi o quota fissa e potenza e usa la colonna Importi/Totale, non il prezzo unitario euro/mese. Escludi rete, oneri e quota potenza. Restituisci l'importo così scritto senza conversioni e non duplicarlo se è già compreso in un totale vendita.",
     "tipologia_cliente": "Identifica Residenziale oppure Business dalla tipologia contrattuale o d'uso in tutte le sezioni pertinenti. Domestico è Residenziale; Micro Imprese, Altri Usi, non domestico o impresa sono Business. Non presumere la tipologia dalla sola presenza di dati aziendali.",
     "tipo_fornitura": "Identifica Luce oppure Gas dalla fornitura corrente. Energia Elettrica è Luce; Gas Naturale è Gas. Usa POD/PDR e unità di consumo come conferma e ignora offerte pubblicizzate.",
 })
@@ -160,14 +159,10 @@ def _normalize_entities(entities: list[dict]) -> tuple[dict, list[tuple[str, str
     if values.get("mesi_bolletta") is not None and months is None:
         invalid.append(("mesi_bolletta", "invalid_period"))
     sales = _nonnegative(values.get("spesa_vendita_energia"))
-    matter = _nonnegative(values.get("spesa_materia_energia"))
-    if sales is None:
-        sales = matter
-    if matter is None:
-        matter = sales
+    matter = sales
     fixed_cost = _nonnegative(values.get("quota_fissa_vendita"))
     fixed_period = _choice(values.get("periodicita_quota_fissa"), _FIXED_PERIOD_ALIASES)
-    for field in ("kwh_totali", "spesa_vendita_energia", "spesa_materia_energia", "quota_fissa_vendita", "potenza_kw"):
+    for field in ("kwh_totali", "spesa_vendita_energia", "quota_fissa_vendita", "potenza_kw"):
         if values.get(field) is not None and _nonnegative(values[field]) is None:
             invalid.append((field, "invalid_number"))
     for field, aliases in (("tipo_fornitura", _SUPPLY_ALIASES), ("tipologia_cliente", _CUSTOMER_ALIASES)):
@@ -175,6 +170,8 @@ def _normalize_entities(entities: list[dict]) -> tuple[dict, list[tuple[str, str
             invalid.append((field, "unknown_classification"))
     if values.get("periodicita_quota_fissa") is not None and fixed_period is None:
         invalid.append(("periodicita_quota_fissa", "unknown_periodicity"))
+    elif fixed_cost is not None and values.get("periodicita_quota_fissa") is None:
+        invalid.append(("periodicita_quota_fissa", "missing_periodicity"))
     if fixed_cost is not None:
         if fixed_period == "Totale periodo":
             fixed_cost = fixed_cost / months if months else None
@@ -200,8 +197,6 @@ def _normalize_entities(entities: list[dict]) -> tuple[dict, list[tuple[str, str
 
 def _fallback_entities(missing: list[str]) -> dict[str, str]:
     requested = {field: BOLLETTA_ENTITIES[field] for field in missing}
-    if "spesa_vendita_energia" in missing:
-        requested["spesa_materia_energia"] = BOLLETTA_ENTITIES["spesa_materia_energia"]
     if "quota_fissa_vendita" in missing:
         requested["periodicita_quota_fissa"] = BOLLETTA_ENTITIES["periodicita_quota_fissa"]
     return requested

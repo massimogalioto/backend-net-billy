@@ -53,6 +53,17 @@ class ScaleDownProviderTests(unittest.TestCase):
         ), self.assertRaises(provider.ScaleDownResponseError):
             provider.extract_pdf(PDF, ENTITIES)
 
+        playground = Mock(ok=True, status_code=200)
+        playground.json.return_value = [{
+            "scaledown": {"entities": [{"type": "fornitore", "text": "Anonimo", "confidence": 0.9}]},
+            "gpt": {"entities": {}},
+        }]
+        with patch.dict("os.environ", {"SCALEDOWN_API_KEY": "key"}), patch.object(
+            provider.requests, "post", return_value=playground
+        ), self.assertRaises(provider.ScaleDownResponseError) as raised:
+            provider.extract_pdf(PDF, ENTITIES)
+        self.assertEqual(raised.exception.diagnostic_code, "INVALID_RESPONSE")
+
     def test_debug_stderr_masks_document_key_and_provider_response(self):
         errors = io.StringIO()
         environment = {"SCALEDOWN_API_KEY": "API_KEY_SECRET", "SCALEDOWN_DEBUG": "true"}

@@ -28,7 +28,7 @@ class BollettaExtractionTests(unittest.TestCase):
     def test_electricity_bill_preserves_legacy_contract_and_monthly_fixed_cost(self):
         result = self.extract(entities(
             cliente="Mario Rossi", indirizzo="Via Roma 1", pod="IT001E123", kwh_totali="459 kWh",
-            mesi_bolletta="2", spesa_materia_energia="105,09 €", spesa_vendita_energia="105,09 €",
+            mesi_bolletta="2", spesa_vendita_energia="105,09 €",
             quota_fissa_vendita="8,34 €", periodicita_quota_fissa="Mensile",
             tipo_fornitura="Energia elettrica", tipologia_cliente="Domestico", potenza_kw="3,0 kW",
         ))
@@ -51,7 +51,7 @@ class BollettaExtractionTests(unittest.TestCase):
         self.assertEqual(period["tipologia_cliente"], "Business")
         self.assertEqual(period["spesa_materia_energia"], 80.0)
         annual = self.extract(entities(
-            kwh_totali="100", mesi_bolletta="1", spesa_materia_energia="40",
+            kwh_totali="100", mesi_bolletta="1", spesa_vendita_energia="40",
             quota_fissa_vendita="120", periodicita_quota_fissa="Annuale",
             tipo_fornitura="Luce", tipologia_cliente="Residenziale",
         ))
@@ -81,7 +81,7 @@ class BollettaExtractionTests(unittest.TestCase):
         first = entities()
         fallback = entities(
             kwh_totali="299 kWh", mesi_bolletta="2",
-            spesa_vendita_energia="86,24 €", spesa_materia_energia="86,24 €",
+            spesa_vendita_energia="86,24 €",
             quota_fissa_vendita="5,06 €", periodicita_quota_fissa="Totale periodo",
             tipo_fornitura="Energia elettrica", tipologia_cliente="Micro Imprese", potenza_kw="3 kW",
         )
@@ -99,7 +99,7 @@ class BollettaExtractionTests(unittest.TestCase):
         fallback_call = provider.call_args_list[1]
         self.assertEqual(fallback_call.args[0], b"%PDF-A2A-original")
         self.assertEqual(set(fallback_call.args[1]), set(bill._REQUIRED_FIELDS) | {
-            "spesa_materia_energia", "periodicita_quota_fissa", "potenza_kw",
+            "periodicita_quota_fissa", "potenza_kw",
         })
         self.assertEqual(fallback_call.kwargs["instruction"], bill._FALLBACK_INSTRUCTION)
         self.assertEqual(fallback_call.kwargs["attempt"], 2)
@@ -140,6 +140,26 @@ class BollettaExtractionTests(unittest.TestCase):
                 self.assertEqual(result["quota_fissa_vendita"], 2.53)
                 self.assertEqual(result["spesa_vendita_energia"], 20.0)
 
+    def test_known_bill_values_normalize_without_duplicate_extraction_field(self):
+        cases = (
+            ("MARIA", "206", "2", "36,65", "13,09", "Mensile", "Domestico", 13.09),
+            ("BRUNA", "299", "2", "86,24", "5,06", "Totale periodo", "Altri Usi", 2.53),
+            ("ENZO", "4", "1", "1,18", "10,01", "Mensile", "Impresa", 10.01),
+            ("TECHWORLD", "304", "1", "97,13", "10,80", "Mensile", "Business", 10.80),
+        )
+        self.assertNotIn("spesa_materia_energia", bill.BOLLETTA_ENTITIES)
+        for name, consumption, months, sales, fixed, period, customer, expected_fixed in cases:
+            with self.subTest(name=name):
+                result = self.extract(entities(
+                    kwh_totali=consumption, mesi_bolletta=months,
+                    spesa_vendita_energia=sales, quota_fissa_vendita=fixed,
+                    periodicita_quota_fissa=period, tipo_fornitura="Luce",
+                    tipologia_cliente=customer,
+                ))
+                self.assertEqual(result["spesa_materia_energia"], result["spesa_vendita_energia"])
+                self.assertEqual(result["quota_fissa_vendita"], expected_fixed)
+                self.assertEqual(result["tipologia_cliente"], "Residenziale" if name == "MARIA" else "Business")
+
     def test_provider_error_on_first_attempt_is_not_retried(self):
         error = ScaleDownTimeoutError("timeout", category="timeout", duration_ms=1)
         with patch.object(bill, "extract_pdf", side_effect=error) as provider, self.assertRaises(
@@ -162,6 +182,8 @@ class BollettaExtractionTests(unittest.TestCase):
     def test_unknown_entity_names_are_reported_only_when_safe_identifiers(self):
         result = ScaleDownEntities([
             {"type": "legacy_consumption", "text": "secret amount"},
+            {"type": "CLIENTE", "text": "private customer"},
+            {"type": "pesa_vendita_energia", "text": "private amount"},
             {"type": "customer name: private", "text": "private person"},
         ], 4)
         diagnostic = io.StringIO()
@@ -170,9 +192,13 @@ class BollettaExtractionTests(unittest.TestCase):
         log = diagnostic.getvalue()
         self.assertIn('"diagnostic_code":"UNKNOWN_ENTITIES"', log)
         self.assertIn("legacy_consumption", log)
+        self.assertIn("CLIENTE", log)
+        self.assertIn("pesa_vendita_energia", log)
         self.assertNotIn("customer name: private", log)
         self.assertNotIn("secret amount", log)
         self.assertNotIn("private person", log)
+        self.assertNotIn("private customer", log)
+        self.assertNotIn("private amount", log)
 
     def test_invalid_number_and_unknown_periodicity_are_diagnostic_not_zero(self):
         result = entities(
@@ -189,6 +215,17 @@ class BollettaExtractionTests(unittest.TestCase):
         self.assertIn('"reason":"invalid_number"', log)
         self.assertIn('"reason":"unknown_periodicity"', log)
         self.assertNotIn("not-a-number", log)
+
+    def test_missing_fixed_cost_periodicity_is_diagnostic_and_not_assumed_monthly(self):
+        result = entities(
+            kwh_totali="10", mesi_bolletta="2", spesa_vendita_energia="20",
+            quota_fissa_vendita="5,06", tipo_fornitura="Luce", tipologia_cliente="Business",
+        )
+        diagnostic = io.StringIO()
+        with patch.object(bill, "extract_pdf", side_effect=[result, result]), redirect_stderr(diagnostic):
+            extracted = bill.extract_bolletta(b"PRIVATE-PDF")
+        self.assertIsNone(extracted["quota_fissa_vendita"])
+        self.assertIn('"reason":"missing_periodicity"', diagnostic.getvalue())
 
 
 if __name__ == "__main__":
