@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from storage_service import delete_pdf, upload_cte_pdf
 from auth_service import CurrentUser, current_user
 from plan_service import UsageLimitError, ensure_active_cte_capacity
+from cte_extraction import normalize_variable_spread
 import logging
 import base64
 import binascii
@@ -40,6 +41,7 @@ class OffertaInput(BaseModel):
     @root_validator(pre=True)
     def generic_validity_is_expiry(cls, values):
         values = dict(values)
+        values["spread"] = normalize_variable_spread(values.get("tariffa"), values.get("spread"))
         legacy_validity = values.get("validita")
         if legacy_validity and not values.get("valid_from") and not values.get("valid_until"):
             values["valid_until"] = legacy_validity

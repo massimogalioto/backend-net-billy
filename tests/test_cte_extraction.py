@@ -1,4 +1,5 @@
 import unittest
+import logging
 from unittest.mock import patch
 
 import cte_extraction as cte
@@ -57,6 +58,38 @@ class CteExtractionTests(unittest.TestCase):
         self.assertEqual(result["spread"], 0.025)
         self.assertEqual(result["costo_fisso"], 12.0)
         self.assertIn("Dispacciamento ARERA", result["altre_note"])
+
+    def test_variable_spread_defaults_only_when_missing_for_all_offer_segments(self):
+        for supply, unit in (("Luce", "€/kWh"), ("Gas", "€/Smc")):
+            for customer in ("Residenziale", "Business"):
+                with self.subTest(supply=supply, customer=customer), self.assertLogs(
+                    "uvicorn.error", logging.INFO
+                ) as logs:
+                    result = self.extract(entities(
+                        tipo_fornitura=supply, tipologia_cliente=customer, tariffa="Variabile",
+                    ))
+                self.assertEqual(result["spread"], 0.0)
+                self.assertEqual(logs.output, [
+                    "INFO:uvicorn.error:[CTE] spread_kwh assente: applicato default 0"
+                ])
+
+                explicit_zero = self.extract(entities(
+                    tipo_fornitura=supply, tipologia_cliente=customer, tariffa="Variabile",
+                    spread="0", unita_spread=unit,
+                ))
+                self.assertEqual(explicit_zero["spread"], 0.0)
+
+    def test_non_numeric_spread_is_not_defaulted_to_zero(self):
+        with self.assertRaises(cte.ScaleDownResponseError) as raised:
+            self.extract(entities(
+                tipo_fornitura="Luce", tariffa="Variabile", spread="abc", unita_spread="€/kWh",
+            ))
+        self.assertEqual(raised.exception.invalid_fields, ("spread",))
+
+    def test_fixed_offer_missing_price_is_not_defaulted(self):
+        result = self.extract(entities(tipo_fornitura="Gas", tariffa="Fisso"))
+        self.assertIsNone(result["prezzo_kwh"])
+        self.assertIsNone(result["spread"])
 
     def test_explicit_mwh_unit_is_converted_and_unknown_unit_is_not_guessed(self):
         converted = self.extract(entities(

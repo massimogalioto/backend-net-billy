@@ -59,6 +59,31 @@ class DuplicateTests(unittest.TestCase):
         self.assertIsNone(offer.min_power_kw)
         self.assertIsNone(offer.max_power_kw)
 
+    def test_variable_offer_input_defaults_missing_or_blank_spread_only(self):
+        for payload in (
+            {key: value for key, value in OFFER.items() if key != "spread"},
+            {**OFFER, "spread": None},
+            {**OFFER, "spread": ""},
+            {**OFFER, "spread": "   "},
+        ):
+            with self.subTest(spread=payload.get("spread", "missing")):
+                offer = endpoint.OffertaInput(**{**payload, "tariffa": "Variabile"})
+                self.assertEqual(offer.spread, 0.0)
+        self.assertEqual(endpoint.OffertaInput(**{**OFFER, "tariffa": "Variabile", "spread": 0}).spread, 0.0)
+        self.assertEqual(endpoint.OffertaInput(**{**OFFER, "tariffa": "Variabile", "spread": 0.015}).spread, 0.015)
+        with self.assertRaises(endpoint.ValidationError):
+            endpoint.OffertaInput(**{**OFFER, "tariffa": "Variabile", "spread": "abc"})
+        self.assertIsNone(endpoint.OffertaInput(**{**OFFER, "prezzo_kwh": None}).prezzo_kwh)
+
+    def test_variable_persistence_receives_non_null_spread(self):
+        payload = {**OFFER, "tariffa": "Variabile", "prezzo_kwh": None, "spread": None}
+        with patch.object(endpoint, "find_duplicate_cte_offer", return_value=None), patch.object(
+            endpoint, "ensure_active_cte_capacity"
+        ), patch.object(endpoint, "insert_offer", return_value="new") as insert:
+            offer = endpoint.OffertaInput(**payload)
+            self.assertEqual(endpoint._salva_validata(offer, "tenant-a"), {"successo": True, "id": "new"})
+        self.assertEqual(insert.call_args.args[0]["spread"], 0.0)
+
     def test_validation_error_keeps_extracted_data_without_pdf_or_tenant(self):
         payload = {**OFFER, "tipo_fornitura": None, "tenant_id": "browser-tenant",
                    "cte_pdf": {"filename": "test.pdf", "content_base64": "secret"}}

@@ -1,4 +1,5 @@
 """Dedicated ScaleDown entity extraction and normalization for CTE PDFs."""
+import logging
 import re
 from datetime import datetime
 from typing import Literal
@@ -9,6 +10,8 @@ from cte_notes import format_cte_notes
 from cte_validity import normalize_cte_validity
 from scaledown_provider import ScaleDownResponseError, extract_pdf
 
+logger = logging.getLogger("uvicorn.error")
+_UNSET = object()
 
 CTE_ENTITIES = {
     "tipo_fornitura": "Identifica l'oggetto dell'offerta: Luce oppure Gas. Usa il prodotto offerto, POD/kWh/PUN per Luce e PDR/Smc/PSV per Gas; ignora riferimenti normativi non pertinenti. Se ambiguo non inventare.",
@@ -143,6 +146,19 @@ def _economic_value(value, unit, supply_type):
     return None
 
 
+def normalize_variable_spread(tariff, raw_value, normalized_value=_UNSET):
+    """Default only a genuinely missing variable spread, preserving invalid values."""
+    if tariff == "Variabile" and (raw_value is None or (isinstance(raw_value, str) and not raw_value.strip())):
+        logger.info("[CTE] spread_kwh assente: applicato default 0")
+        return 0.0
+    if tariff == "Variabile" and normalized_value is not _UNSET and normalized_value is None:
+        raise ScaleDownResponseError(
+            "Spread CTE non normalizzabile", category="validation",
+            invalid_fields=("spread",), validation_errors=(("spread", "number_parsing"),),
+        )
+    return raw_value if normalized_value is _UNSET else normalized_value
+
+
 def _date(value):
     if not value:
         return None
@@ -191,12 +207,13 @@ def extract_cte(file_bytes: bytes) -> dict:
     elif _text(data["dispacciamento_riferimento_arera"]):
         extra.append(f"Dispacciamento ARERA: {_text(data['dispacciamento_riferimento_arera'])}")
     other_notes = "; ".join(extra) or None
+    normalized_spread = _economic_value(data["spread"], data["unita_spread"], data["tipo_fornitura"])
     return {
         "fornitore": _text(data["fornitore"]), "nome_offerta": _text(data["nome_offerta"]),
         "tipologia_cliente": data["tipologia_cliente"], "tariffa": data["tariffa"],
         "prezzo_kwh": _economic_value(data["prezzo_energia_iniziale"], data["unita_prezzo_energia"], data["tipo_fornitura"])
         if data["tariffa"] == "Fisso" else None,
-        "spread": _economic_value(data["spread"], data["unita_spread"], data["tipo_fornitura"])
+        "spread": normalize_variable_spread(data["tariffa"], data["spread"], normalized_spread)
         if data["tariffa"] == "Variabile" else None,
         "costo_fisso": fixed_cost, **validity, "vincoli": _text(data["vincoli"]),
         "tipo_fornitura": data["tipo_fornitura"], "min_power_kw": _positive_number(data["min_power_kw"]),
